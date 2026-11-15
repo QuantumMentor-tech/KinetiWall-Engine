@@ -1,0 +1,17 @@
+[package]
+name = "kinetiwall-playback"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "KinetiWall playback architecture: typed requests, player-adapter contract, lifecycle state machine, and orchestration boundary (no media backend)."
+
+[dependencies]
+kinetiwall-catalog = { path = "../kinetiwall-catalog" }
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+

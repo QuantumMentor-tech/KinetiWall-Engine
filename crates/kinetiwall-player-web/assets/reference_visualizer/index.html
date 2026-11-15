@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KinetiWall Audio Reactive Reference Visualizer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0d1117;
+      color: #c9d1d9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    #visualizer-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #status-overlay {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: rgba(13, 17, 23, 0.75);
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(8px);
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 11px;
+      width: fit-content;
+    }
+    .badge-active {
+      background: rgba(35, 134, 54, 0.2);
+      color: #3fb950;
+      border: 1px solid rgba(63, 185, 80, 0.4);
+    }
+    .badge-idle {
+      background: rgba(110, 118, 129, 0.2);
+      color: #8b949e;
+      border: 1px solid rgba(139, 148, 158, 0.4);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="visualizer-canvas"></canvas>
+  <div id="status-overlay">
+    <div id="status-badge" class="badge badge-idle">Awaiting Audio Stream</div>
+    <div id="metrics-line">RMS: 0.00 | Peak: 0.00 | Bands: [0, 0, 0, 0, 0, 0, 0, 0]</div>
+  </div>
+
+  <script>
+    (function() {
+      const canvas = document.getElementById('visualizer-canvas');
+      const ctx = canvas.getContext('2d');
+      const statusBadge = document.getElementById('status-badge');
+      const metricsLine = document.getElementById('metrics-line');
+
+      let width = canvas.width = window.innerWidth;
+      let height = canvas.height = window.innerHeight;
+
+      window.addEventListener('resize', () => {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+      });
+
+      // State
+      let currentRms = 0.0;
+      let currentPeak = 0.0;
+      let currentBands = [0, 0, 0, 0, 0, 0, 0, 0];
+      let lastFrameTime = 0;
+      let isStreaming = false;
+
+      // Listen for bounded visualizer frame from KinetiWall host
+      function handleFrame(frame) {
+        if (!frame || typeof frame !== 'object') return;
+        currentRms = typeof frame.rms === 'number' ? Math.max(0, Math.min(1, frame.rms)) : 0;
+        currentPeak = typeof frame.peak === 'number' ? Math.max(0, Math.min(1, frame.peak)) : 0;
+        if (Array.isArray(frame.frequency_bands)) {
+          for (let i = 0; i < 8; i++) {
+            currentBands[i] = typeof frame.frequency_bands[i] === 'number'
+              ? Math.max(0, Math.min(1, frame.frequency_bands[i]))
+              : 0;
+          }
+        }
+        lastFrameTime = performance.now();
+        if (!isStreaming) {
+          isStreaming = true;
+          statusBadge.textContent = "Audio Reactive: Active";
+          statusBadge.className = "badge badge-active";
+        }
+      }
+
+      // Native WebView2 message receiver
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.addEventListener('message', (event) => {
+          handleFrame(event.data);
+        });
+      }
+
+      // Standard postMessage receiver fallback
+      window.addEventListener('message', (event) => {
+        handleFrame(event.data);
+      });
+
+      // Custom event fallback
+      window.addEventListener('kinetiwallAudio', (event) => {
+        handleFrame(event.detail);
+      });
+
+      // Render loop
+      let smoothedBands = [0, 0, 0, 0, 0, 0, 0, 0];
+      let smoothedRms = 0;
+      let smoothedPeak = 0;
+
+      function render(now) {
+        requestAnimationFrame(render);
+
+        // Check if stream went idle (> 1000ms without new frames)
+        if (isStreaming && (now - lastFrameTime > 1000)) {
+          isStreaming = false;
+          statusBadge.textContent = "Audio Reactive: Idle / Silent";
+          statusBadge.className = "badge badge-idle";
+        }
+
+        // Decay smoothed values towards current targets
+        const decayAlpha = 0.2;
+        smoothedRms += (currentRms - smoothedRms) * decayAlpha;
+        smoothedPeak += (currentPeak - smoothedPeak) * decayAlpha;
+        for (let i = 0; i < 8; i++) {
+          smoothedBands[i] += (currentBands[i] - smoothedBands[i]) * decayAlpha;
+        }
+
+        // If idle, decay to zero smoothly
+        if (!isStreaming) {
+          currentRms *= 0.95;
+          currentPeak *= 0.95;
+          for (let i = 0; i < 8; i++) currentBands[i] *= 0.95;
+        }
+
+        // Clear canvas
+        ctx.fillStyle = '#0d1117';
+        ctx.fillRect(0, 0, width, height);
+
+        // 1. Draw central glowing orb responding to RMS and Peak
+        const centerX = width / 2;
+        const centerY = height / 2 - 40;
+        const baseRadius = Math.min(width, height) * 0.12;
+        const orbRadius = baseRadius + smoothedRms * 60 + smoothedPeak * 30;
+
+        const gradient = ctx.createRadialGradient(
+          centerX, centerY, baseRadius * 0.2,
+          centerX, centerY, orbRadius * 1.5
+        );
+        gradient.addColorStop(0, `rgba(88, 166, 255, ${0.4 + smoothedPeak * 0.5})`);
+        gradient.addColorStop(0.5, `rgba(163, 113, 247, ${0.2 + smoothedRms * 0.4})`);
+        gradient.addColorStop(1, 'rgba(13, 17, 23, 0)');
+
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, orbRadius * 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        // 2. Draw 8 frequency bars
+        const numBars = 8;
+        const totalBarWidth = Math.min(width * 0.7, 700);
+        const barSpacing = 16;
+        const barWidth = (totalBarWidth - (numBars - 1) * barSpacing) / numBars;
+        const startX = (width - totalBarWidth) / 2;
+        const baselineY = height - 120;
+        const maxBarHeight = height * 0.35;
+
+        for (let i = 0; i < numBars; i++) {
+          const x = startX + i * (barWidth + barSpacing);
+          const barHeight = Math.max(6, smoothedBands[i] * maxBarHeight);
+          const y = baselineY - barHeight;
+
+          // Bar gradient from purple to cyan
+          const barGrad = ctx.createLinearGradient(x, baselineY, x, y);
+          barGrad.addColorStop(0, '#58a6ff');
+          barGrad.addColorStop(0.6, '#bc8cff');
+          barGrad.addColorStop(1, '#ff7b72');
+
+          ctx.fillStyle = barGrad;
+          ctx.beginPath();
+          ctx.roundRect(x, y, barWidth, barHeight, [4, 4, 0, 0]);
+          ctx.fill();
+
+          // Peak cap
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(x, Math.max(0, y - 4), barWidth, 3);
+        }
+
+        // Update metrics text
+        metricsLine.textContent = `RMS: ${smoothedRms.toFixed(2)} | Peak: ${smoothedPeak.toFixed(2)} | Bands: [${smoothedBands.map(b => b.toFixed(2)).join(', ')}]`;
+      }
+
+      requestAnimationFrame(render);
+    })();
+  </script>
+</body>
+</html>
+

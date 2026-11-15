@@ -1,0 +1,29 @@
+[package]
+name = "kinetiwall-player-video"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "KinetiWall isolated video player host (runtime-loaded libmpv) and the controller-side PlayerAdapter for it."
+
+[features]
+default = []
+# Test-only deterministic backend. Never enable in release builds.
+fake-backend = []
+
+[dependencies]
+kinetiwall-catalog = { path = "../kinetiwall-catalog" }
+kinetiwall-playback = { path = "../kinetiwall-playback" }
+libloading.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+# Enables the fake backend for this package's own integration tests.
+kinetiwall-player-video = { path = ".", features = ["fake-backend"] }
+
+[[bin]]
+name = "kinetiwall-player-video"
+path = "src/bin/kinetiwall-player-video.rs"
+

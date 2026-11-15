@@ -1,0 +1,13 @@
+{
+  "name": "kinetiwall-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "KinetiWall Desktop Live Wallpaper Engine — UI & Catalog Workspace",
+  "scripts": {
+    "test": "node --test src-ui/tests/*.test.ts",
+    "test:ui": "node --test src-ui/tests/*.test.ts",
+    "verify:build": "node src-ui/scripts/verifyBuild.ts"
+  }
+}
+

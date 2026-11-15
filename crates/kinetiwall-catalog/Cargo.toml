@@ -1,0 +1,15 @@
+[package]
+name = "kinetiwall-catalog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "KinetiWall wallpaper library domain model, validation, path safety, and local hybrid JSON catalog foundation."
+
+[dependencies]
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+

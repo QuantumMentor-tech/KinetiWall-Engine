@@ -1,0 +1,24 @@
+[workspace]
+members = [
+    "crates/kinetiwall-audio",
+    "crates/kinetiwall-catalog",
+    "crates/kinetiwall-desktop",
+    "crates/kinetiwall-playback",
+    "crates/kinetiwall-player-video",
+    "crates/kinetiwall-player-web",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "serde", "std"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+libloading = "0.8"
+thiserror = "2.0.21"
+tracing = "0.1.44"
+uuid = { version = "1.27.0", features = ["v4", "serde"] }

@@ -1,0 +1,17 @@
+[package]
+name = "kinetiwall-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "KinetiWall opt-in real-time audio capture (WASAPI loopback), DSP feature extraction, and wallpaper visualizer contracts."
+
+[dependencies]
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
