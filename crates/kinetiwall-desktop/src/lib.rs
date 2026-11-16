@@ -23,12 +23,17 @@
 //! - **Multi-Monitor Layout Modes**: Orchestrates Independent, Span, and Clone presentation modes,
 //!   virtual desktop composition geometry, synchronized clone playback, and transactional mode transitions (Step 45).
 
+pub mod adaptive;
+pub mod arbitration;
 pub mod assignment;
 pub mod attachment;
+pub mod budget;
 pub mod compatibility;
 pub mod discovery;
 pub mod display;
+pub mod display_power;
 pub mod fallback;
+pub mod inactivity;
 pub mod layout;
 pub mod policy;
 pub mod power;
@@ -36,7 +41,19 @@ pub mod provider;
 pub mod session;
 pub mod synchronization;
 pub mod types;
+pub mod win_session;
 
+pub use adaptive::{
+    AdaptiveAction, AdaptiveBackendCapability, AdaptiveDiagnosticEvent,
+    AdaptiveDiagnosticEventType, AdaptivePlaybackPolicyEvaluator, AdaptivePolicyDecision,
+    AdaptiveQualityLevel, AdaptiveQualitySettings, EffectiveQualityOverride,
+    PlaybackResourceObservation, PressureState, ResourceMetricKind, ResourceMetricUnit,
+    ResourceObservationScope, ResourceSignalQuality, SustainedPressureDetector,
+    DEFAULT_ADJUSTMENT_COOLDOWN_MS, DEFAULT_CPU_PRESSURE_THRESHOLD_PERCENT,
+    DEFAULT_CPU_RECOVERY_THRESHOLD_PERCENT, DEFAULT_RECOVERY_DWELL_THRESHOLD_MS,
+    DEFAULT_SUSTAINED_PRESSURE_THRESHOLD_MS, DEFAULT_TARGET_FPS_FLOOR, MAX_ADAPTIVE_DIAGNOSTICS,
+    MAX_RESOURCE_SAMPLE_HISTORY, MIN_SAFE_FPS_FLOOR,
+};
 pub use assignment::{
     AssignmentDiagnosticEvent, AssignmentError, AssignmentKind, AssignmentRepository,
     AssignmentResolutionOutcome, AssignmentService, AssignmentStoreData, DisplayAssignment,
@@ -46,6 +63,15 @@ pub use assignment::{
 pub use attachment::{
     constants, AttachmentCoordinator, AttachmentError, AttachmentRecord, AttachmentRequest,
     AttachmentStage, AttachmentState, DetachmentRecord, OriginalWindowState, RollbackOutcome,
+};
+pub use budget::{
+    AggregateBudgetState, AggregateWorkloadSnapshot, ApplicationResourceBudget, ArbitrationAction,
+    BudgetDiagnosticEvent, BudgetDiagnosticEventType, MeasurementCoverageStatus, ResourceBudgetArbiter,
+    ResourceOwnership, TrackedPlaybackResource, TrackedResourceId,
+    DEFAULT_BUDGET_ADJUSTMENT_COOLDOWN_MS, DEFAULT_BUDGET_PRESSURE_CPU_PERCENT,
+    DEFAULT_BUDGET_RECOVERY_CPU_PERCENT, DEFAULT_BUDGET_RECOVERY_DWELL_MS,
+    DEFAULT_BUDGET_SUSTAINED_PRESSURE_MS, DEFAULT_MAX_SIMULTANEOUS_ADJUSTMENTS,
+    MAX_BUDGET_DIAGNOSTICS, MAX_RESOURCE_SAMPLES,
 };
 pub use compatibility::{CompatibilityPolicy, CompatibilityRejectionReason};
 pub use discovery::{DesktopDiscoveryOptions, DesktopHostDiscovery};
@@ -98,4 +124,30 @@ pub use synchronization::{
 pub use types::{
     CandidateRole, DesktopCandidateWindow, DesktopShellTopology, DiscoveryError,
     NativeWindowHandle, TopologyClassification, WindowRect,
+};
+pub use win_session::{
+    DesktopSessionNotificationProvider, MockDesktopSessionNotificationProvider,
+    NativeDesktopSessionNotificationProvider, SessionConnectionState, SessionDiagnosticEvent,
+    SessionDiagnosticEventType, SessionNotificationEvent, SessionNotificationEventKind,
+    SessionNotificationRegistration, SessionNotificationScope, SessionPlaybackSettings,
+    SessionPolicyEvaluation, WinSessionError, WindowsSessionSnapshot, WorkstationLockState,
+    MAX_SESSION_POLICY_DIAGNOSTICS,
+};
+pub use display_power::{
+    decode_display_power_value, DesktopDisplayPowerProvider, DisplayDimmedAction, DisplayPowerDiagnosticEvent,
+    DisplayPowerDiagnosticEventType, DisplayPowerError, DisplayPowerPlaybackSettings,
+    DisplayPowerPolicyEvaluation, DisplayPowerScope, DisplayPowerSnapshot, DisplayPowerState,
+    MockDesktopDisplayPowerProvider, NativeDesktopDisplayPowerProvider, MAX_DISPLAY_POWER_DIAGNOSTICS,
+};
+pub use inactivity::{
+    calculate_elapsed_ticks, DesktopUserInactivityProvider, InactivityDiagnosticEvent,
+    InactivityDiagnosticEventType, InactivityError, InactivityPlaybackSettings,
+    InactivityPolicyEvaluation, InactivitySnapshot, InactivityState,
+    MockDesktopUserInactivityProvider, NativeDesktopUserInactivityProvider,
+    DEFAULT_INACTIVITY_THRESHOLD_MILLIS, MAX_INACTIVITY_DIAGNOSTICS,
+    MAX_INACTIVITY_THRESHOLD_MILLIS, MIN_INACTIVITY_THRESHOLD_MILLIS,
+};
+pub use arbitration::{
+    ArbitrationDiagnosticEvent, ConstraintCategory, DesiredSessionState, EffectivePlaybackDecision,
+    PolicyArbitrator, PolicyExplanationCode, SessionArbitrationInput, MAX_ARBITRATION_DIAGNOSTICS,
 };

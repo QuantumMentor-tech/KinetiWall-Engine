@@ -581,4 +581,333 @@ describe('Step 46: Multi-Monitor Configuration UI & Assignment Management', () =
     assert.strictEqual(toggledOn, true);
     assert.strictEqual(displayStore.getState().powerSettings.enableStaticFallback, true);
   });
+
+  it('toggles adaptive quality setting in DisplayStore and maintains opt-in default', async () => {
+    const displayStore = new DisplayStore(new DisplayIpcClient(createMockDisplayIpcTransport()));
+    await displayStore.refreshTopology();
+
+    // STRICT MANDATE: Must be disabled by default (opt-in)
+    assert.strictEqual(displayStore.getState().adaptiveSettings.enabled, false);
+    assert.strictEqual(displayStore.getState().adaptiveSettings.targetFpsFloor, 30);
+
+    // Toggle on
+    const toggledOn = await displayStore.toggleAdaptiveQuality();
+    assert.strictEqual(toggledOn, true);
+    assert.strictEqual(displayStore.getState().adaptiveSettings.enabled, true);
+
+    // Toggle back off
+    const toggledOff = await displayStore.toggleAdaptiveQuality();
+    assert.strictEqual(toggledOff, true);
+    assert.strictEqual(displayStore.getState().adaptiveSettings.enabled, false);
+  });
+
+  it('renders adaptive quality badge on DisplayCard when reduced tier is active', () => {
+    const display = {
+      id: '\\\\.\\DISPLAY1',
+      deviceName: '\\\\.\\DISPLAY1',
+      friendlyName: 'LG UltraGear 27"',
+      isPrimary: true,
+      isAttached: true,
+      geometry: { left: 0, top: 0, right: 2560, bottom: 1440, width: 2560, height: 1440 },
+    };
+
+    const throttledSession = {
+      sessionId: 'sess-adaptive-1',
+      displayId: '\\\\.\\DISPLAY1',
+      wallpaperId: 'wp-cyberpunk-city',
+      state: 'active' as const,
+      effectiveQualityLevel: 'reduced' as const,
+      effectiveFps: 30,
+      geometry: display.geometry,
+      generation: 1,
+      createdAtMillis: Date.now() - 10000,
+      lastUpdatedMillis: Date.now(),
+    };
+
+    const cardNode = DisplayCard({
+      display,
+      session: throttledSession,
+      isSelected: false,
+      layoutMode: 'independent',
+      onSelect: () => {},
+      onChangeWallpaper: () => {},
+      onClearAssignment: () => {},
+    });
+
+    const html = renderToHtml(cardNode);
+    assert.ok(html.includes('data-testid="display-adaptive-badge-\\\\.\\DISPLAY1"'));
+    assert.ok(html.includes('Adaptive (30 FPS)'));
+    assert.ok(html.includes('⚡'));
+  });
+
+  it('initializes resource budget disabled by default and supports toggle via store', async () => {
+    const transport = createMockDisplayIpcTransport();
+    const client = new DisplayIpcClient(transport);
+    const displayStore = new DisplayStore(client);
+    await displayStore.refreshTopology();
+
+    const initialState = displayStore.getState();
+    assert.strictEqual(initialState.resourceBudget.enabled, false);
+    assert.strictEqual(initialState.budgetState, 'disabled');
+    assert.strictEqual(initialState.resourceBudget.targetAggregateCpuPercent, 75.0);
+
+    const toggledOn = await displayStore.toggleResourceBudget();
+    assert.strictEqual(toggledOn, true);
+    assert.strictEqual(displayStore.getState().resourceBudget.enabled, true);
+    assert.strictEqual(displayStore.getState().budgetState, 'within_budget');
+
+    const toggledOff = await displayStore.toggleResourceBudget();
+    assert.strictEqual(toggledOff, true);
+    assert.strictEqual(displayStore.getState().resourceBudget.enabled, false);
+    assert.strictEqual(displayStore.getState().budgetState, 'disabled');
+  });
+
+  it('DisplaysView renders dynamic resource budget info and toggle', async () => {
+    const transport = createMockDisplayIpcTransport();
+    const client = new DisplayIpcClient(transport);
+    const displayStore = new DisplayStore(client);
+    await displayStore.refreshTopology();
+
+    const catalogStore = new CatalogStore(
+      new CatalogIpcClient({
+        async invokeGetLibrarySnapshot() {
+          return { entries: createMockCatalogWallpapers(), integrity: {}, load_issues: [] };
+        },
+        async invokeRegisterWallpapers() {
+          return { registered_count: 0, items: [] };
+        },
+      }),
+    );
+    await catalogStore.loadCatalog();
+
+    const viewNode = DisplaysView({ displayStore, catalogStore });
+    const html = renderToHtml(viewNode);
+
+    assert.ok(html.includes('data-testid="resource-budget-info"'));
+    assert.ok(html.includes('Resource Budget Arbiter'));
+    assert.ok(html.includes('Target: 75% CPU'));
+    assert.ok(html.includes('data-testid="toggle-resource-budget-button"'));
+    assert.ok(html.includes('Disabled (Default)'));
+  });
+
+  it('displayStore session settings default to disabled and toggleLockPause updates state', async () => {
+    const transport = createMockDisplayIpcTransport();
+    const client = new DisplayIpcClient(transport);
+    const displayStore = new DisplayStore(client);
+    await displayStore.refreshTopology();
+
+    const initialState = displayStore.getState();
+    assert.strictEqual(initialState.sessionSettings.enabled, false);
+    assert.strictEqual(initialState.sessionSettings.pauseOnLock, true);
+    assert.strictEqual(initialState.sessionSnapshot.lockState, 'unlocked');
+
+    const toggledOn = await displayStore.toggleLockPause();
+    assert.strictEqual(toggledOn, true);
+    assert.strictEqual(displayStore.getState().sessionSettings.enabled, true);
+
+    const toggledOff = await displayStore.toggleLockPause();
+    assert.strictEqual(toggledOff, true);
+    assert.strictEqual(displayStore.getState().sessionSettings.enabled, false);
+  });
+
+  it('DisplaysView renders session lifecycle policy info, status, and toggle button', async () => {
+    const transport = createMockDisplayIpcTransport();
+    const client = new DisplayIpcClient(transport);
+    const displayStore = new DisplayStore(client);
+    await displayStore.refreshTopology();
+
+    const catalogStore = new CatalogStore(
+      new CatalogIpcClient({
+        async invokeGetLibrarySnapshot() {
+          return { entries: createMockCatalogWallpapers(), integrity: {}, load_issues: [] };
+        },
+        async invokeRegisterWallpapers() {
+          return { registered_count: 0, items: [] };
+        },
+      }),
+    );
+    await catalogStore.loadCatalog();
+
+    const viewNode = DisplaysView({ displayStore, catalogStore });
+    const html = renderToHtml(viewNode);
+
+    assert.ok(html.includes('data-testid="session-policy-info"'));
+    assert.ok(html.includes('Session Lifecycle Awareness'));
+    assert.ok(html.includes('Lock: unlocked'));
+    assert.ok(html.includes('data-testid="toggle-lock-pause-button"'));
+    assert.ok(html.includes('Disabled (Default)'));
+  });
+
+  it('displayStore display power settings default to disabled and toggleDisplayPowerPause updates state', async () => {
+    const transport = createMockDisplayIpcTransport();
+    const client = new DisplayIpcClient(transport);
+    const displayStore = new DisplayStore(client);
+    await displayStore.refreshTopology();
+
+    const initialState = displayStore.getState();
+    assert.strictEqual(initialState.displayPowerSettings.enabled, false);
+    assert.strictEqual(initialState.displayPowerSettings.pauseOnDisplayOff, true);
+    assert.strictEqual(initialState.displayPowerSnapshot.state, 'on');
+
+    const toggledOn = await displayStore.toggleDisplayPowerPause();
+    assert.strictEqual(toggledOn, true);
+    assert.strictEqual(displayStore.getState().displayPowerSettings.enabled, true);
+
+    const toggledOff = await displayStore.toggleDisplayPowerPause();
+    assert.strictEqual(toggledOff, true);
+    assert.strictEqual(displayStore.getState().displayPowerSettings.enabled, false);
+  });
+
+  it('DisplaysView renders display power policy info, status, and toggle button', async () => {
+    const transport = createMockDisplayIpcTransport();
+    const client = new DisplayIpcClient(transport);
+    const displayStore = new DisplayStore(client);
+    await displayStore.refreshTopology();
+
+    const catalogStore = new CatalogStore(
+      new CatalogIpcClient({
+        async invokeGetLibrarySnapshot() {
+          return { entries: createMockCatalogWallpapers(), integrity: {}, load_issues: [] };
+        },
+        async invokeRegisterWallpapers() {
+          return { registered_count: 0, items: [] };
+        },
+      }),
+    );
+    await catalogStore.loadCatalog();
+
+    const viewNode = DisplaysView({ displayStore, catalogStore });
+    const html = renderToHtml(viewNode);
+
+    assert.ok(html.includes('data-testid="display-power-policy-info"'));
+    assert.ok(html.includes('Display-Power Awareness'));
+    assert.ok(html.includes('Display: on'));
+    assert.ok(html.includes('data-testid="toggle-display-power-button"'));
+    assert.ok(html.includes('Disabled (Default)'));
+  });
+
+  it('displayStore inactivity settings default to disabled and toggleInactivityPause updates state', async () => {
+    const transport = createMockDisplayIpcTransport();
+    const client = new DisplayIpcClient(transport);
+    const displayStore = new DisplayStore(client);
+    await displayStore.refreshTopology();
+
+    const initialState = displayStore.getState();
+    assert.strictEqual(initialState.inactivitySettings.enabled, false);
+    assert.strictEqual(initialState.inactivitySettings.idleThresholdMillis, 600000);
+    assert.strictEqual(initialState.inactivitySnapshot.state, 'active');
+
+    const toggledOn = await displayStore.toggleInactivityPause();
+    assert.strictEqual(toggledOn, true);
+    assert.strictEqual(displayStore.getState().inactivitySettings.enabled, true);
+
+    const toggledOff = await displayStore.toggleInactivityPause();
+    assert.strictEqual(toggledOff, true);
+    assert.strictEqual(displayStore.getState().inactivitySettings.enabled, false);
+  });
+
+  it('DisplaysView renders user inactivity policy info, status, and toggle button', async () => {
+    const transport = createMockDisplayIpcTransport();
+    const client = new DisplayIpcClient(transport);
+    const displayStore = new DisplayStore(client);
+    await displayStore.refreshTopology();
+
+    const catalogStore = new CatalogStore(
+      new CatalogIpcClient({
+        async invokeGetLibrarySnapshot() {
+          return { entries: createMockCatalogWallpapers(), integrity: {}, load_issues: [] };
+        },
+        async invokeRegisterWallpapers() {
+          return { registered_count: 0, items: [] };
+        },
+      }),
+    );
+    await catalogStore.loadCatalog();
+
+    const viewNode = DisplaysView({ displayStore, catalogStore });
+    const html = renderToHtml(viewNode);
+
+    assert.ok(html.includes('data-testid="inactivity-policy-info"'));
+    assert.ok(html.includes('User-Inactivity Awareness'));
+    assert.ok(html.includes('State: active'));
+    assert.ok(html.includes('data-testid="toggle-inactivity-button"'));
+    assert.ok(html.includes('Disabled (Default)'));
+  });
 });
+
+  it('renders policy decision diagnostics and divergence note on DisplayCard (Step 57)', () => {
+    const display: DisplayDescriptorDto = {
+      id: 'disp_1',
+      deviceName: '\\\\.\\DISPLAY1',
+      isPrimary: true,
+      isAttached: true,
+      geometry: { left: 0, top: 0, right: 1920, bottom: 1080, width: 1920, height: 1080 },
+    };
+
+    const cardNode = DisplayCard({
+      display,
+      isSelected: false,
+      layoutMode: 'independent',
+      policyDecision: {
+        displayId: 'disp_1',
+        desiredState: 'suspended',
+        actualState: 'active',
+        explanationCodes: ['fullscreen_active'],
+        primaryExplanation: 'Suspended due to active foreground fullscreen application',
+        primaryReasonCode: 'FULLSCREEN_ACTIVE',
+        isStateDivergent: true,
+        requiresTransition: true,
+        evaluatedAtMillis: 1000,
+      },
+      onSelect: () => {},
+      onChangeWallpaper: () => {},
+      onClearAssignment: () => {},
+    });
+
+    const html = renderToHtml(cardNode);
+    assert.ok(html.includes('data-testid="display-policy-diagnostics-disp_1"'));
+    assert.ok(html.includes('FULLSCREEN_ACTIVE'));
+    assert.ok(html.includes('Suspended due to active foreground fullscreen application'));
+    assert.ok(html.includes('Reconciling transition: desired=suspended, backend=active'));
+  });
+
+  it('updates policy decisions in DisplayStore and displays them in DisplaysView (Step 57)', async () => {
+    const displayStore = new DisplayStore(new DisplayIpcClient(createMockDisplayIpcTransport()));
+    await displayStore.refreshTopology();
+
+    const did = displayStore.getState().snapshot?.displays[0]?.id ?? 'disp_1';
+    displayStore.updatePolicyDecision({
+      displayId: did,
+      desiredState: 'active',
+      actualState: 'active',
+      explanationCodes: ['unconstrained_active'],
+      primaryExplanation: 'All constraints cleared; playback active',
+      primaryReasonCode: 'UNCONSTRAINED_ACTIVE',
+      isStateDivergent: false,
+      requiresTransition: false,
+      evaluatedAtMillis: 2000,
+    });
+
+    assert.strictEqual(displayStore.getState().policyDecisions[did]?.primaryReasonCode, 'UNCONSTRAINED_ACTIVE');
+
+    const catalogStore = new CatalogStore(
+      new CatalogIpcClient({
+        async invokeGetLibrarySnapshot() {
+          return { entries: [], integrity: {}, load_issues: [] };
+        },
+        async invokeRegisterWallpapers() {
+          return { registered_count: 0, items: [] };
+        },
+      }),
+    );
+
+    const viewNode = DisplaysView({
+      displayStore,
+      catalogStore,
+    });
+
+    const html = renderToHtml(viewNode);
+    assert.ok(html.includes(`data-testid="display-policy-diagnostics-${did}"`));
+    assert.ok(html.includes('UNCONSTRAINED_ACTIVE'));
+    assert.ok(html.includes('All constraints cleared; playback active'));
+  });

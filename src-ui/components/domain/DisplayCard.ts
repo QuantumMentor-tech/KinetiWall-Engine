@@ -9,6 +9,7 @@ import { h, type UiNode } from '../primitives/uiNode.ts';
 import type {
   DisplayDescriptorDto,
   DisplaySessionStatusDto,
+  EffectivePlaybackDecisionDto,
   MultiMonitorLayoutMode,
   ResolvedDisplayAssignmentDto,
 } from '../../types/display.ts';
@@ -17,6 +18,7 @@ export interface DisplayCardProps {
   display: DisplayDescriptorDto;
   assignment?: ResolvedDisplayAssignmentDto;
   session?: DisplaySessionStatusDto;
+  policyDecision?: EffectivePlaybackDecisionDto;
   isSelected: boolean;
   layoutMode: MultiMonitorLayoutMode;
   disabled?: boolean;
@@ -30,6 +32,7 @@ export function DisplayCard(props: DisplayCardProps): UiNode {
     display,
     assignment,
     session,
+    policyDecision,
     isSelected,
     layoutMode,
     disabled,
@@ -123,6 +126,14 @@ export function DisplayCard(props: DisplayCardProps): UiNode {
           iconSymbol: sessionSymbol,
           tone: sessionTone,
         }),
+        session?.effectiveQualityLevel && session.effectiveQualityLevel !== 'normal'
+          ? Badge({
+              testId: `display-adaptive-badge-${display.id}`,
+              label: `Adaptive (${session.effectiveFps ?? 30} FPS)`,
+              iconSymbol: '⚡',
+              tone: 'warning',
+            })
+          : null,
       ),
     ),
     // Specs Grid: Geometry, Scale, Coordinates
@@ -206,6 +217,54 @@ export function DisplayCard(props: DisplayCardProps): UiNode {
           : null,
       ),
     ),
+    // Step 57: Policy Decision Diagnostics & Explainability
+    policyDecision
+      ? h(
+          'div',
+          {
+            attrs: {
+              'data-testid': `display-policy-diagnostics-${display.id}`,
+              style:
+                'margin-top: 10px; padding: 8px 12px; border-radius: 6px; background: rgba(0, 240, 255, 0.03); border: 1px solid rgba(0, 240, 255, 0.1); font-size: 0.75rem; color: #8A8F98; display: flex; flex-direction: column; gap: 4px;',
+            },
+          },
+          h(
+            'div',
+            { style: 'display: flex; align-items: center; justify-content: space-between;' },
+            h(
+              'span',
+              { style: 'font-weight: 600; color: #00F0FF; display: flex; align-items: center; gap: 4px;' },
+              '🔍 Policy Decision:',
+            ),
+            h(
+              'span',
+              {
+                attrs: { 'data-testid': `policy-reason-code-${display.id}` },
+                style: 'font-family: monospace; font-size: 0.7rem; color: #5A6072;',
+              },
+              policyDecision.primaryReasonCode,
+            ),
+          ),
+          h(
+            'p',
+            {
+              attrs: { 'data-testid': `policy-explanation-text-${display.id}` },
+              style: 'margin: 0; color: #D1D5DB; line-height: 1.3;',
+            },
+            policyDecision.primaryExplanation,
+          ),
+          policyDecision.isStateDivergent
+            ? h(
+                'div',
+                {
+                  attrs: { 'data-testid': `policy-divergence-note-${display.id}` },
+                  style: 'font-size: 0.7rem; color: #FFB020; margin-top: 2px;',
+                },
+                `⚠️ Reconciling transition: desired=${policyDecision.desiredState}, backend=${policyDecision.actualState}`,
+              )
+            : null,
+        )
+      : null,
   );
 }
 

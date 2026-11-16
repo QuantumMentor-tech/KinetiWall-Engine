@@ -180,12 +180,14 @@ export function DisplaysView(props: DisplaysViewProps): UiNode {
           ...displays.map((display) => {
             const assignment = state.resolvedAssignments.find((a) => a.displayId === display.id);
             const session = state.sessions.find((s) => s.displayId === display.id);
+            const policyDecision = state.policyDecisions[display.id];
             const isSelected = display.id === state.selectedDisplayId;
 
             return DisplayCard({
               display,
               assignment,
               session,
+              policyDecision,
               isSelected,
               layoutMode: state.savedMode,
               disabled: state.isSaving || state.isApplying,
@@ -263,6 +265,7 @@ export function DisplaysView(props: DisplaysViewProps): UiNode {
               }),
             ),
           ),
+
           h(
             'div',
             {
@@ -393,6 +396,166 @@ export function DisplaysView(props: DisplaysViewProps): UiNode {
                 },
               },
               state.powerSettings.enableStaticFallback ? 'Enabled' : 'Disabled',
+            ),
+          ),
+
+          // Adaptive Playback Quality & Performance Budgets
+          h(
+            'div',
+            {
+              attrs: {
+                'data-testid': 'adaptive-quality-info',
+                style: 'margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.15); font-size: 0.8rem; color: #8A8F98; display: flex; align-items: center; justify-content: space-between;',
+              },
+            },
+            h(
+              'span',
+              {},
+              `⚡ Adaptive Quality Optimization: Dynamically throttles render cadence under sustained resource pressure (Floor: ${state.adaptiveSettings.targetFpsFloor} FPS)`,
+            ),
+            h(
+              'button',
+              {
+                attrs: {
+                  type: 'button',
+                  'data-testid': 'toggle-adaptive-quality-button',
+                  style: `padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; border: 1px solid ${state.adaptiveSettings.enabled ? '#00E5A3' : '#8A8F98'}; background: ${state.adaptiveSettings.enabled ? 'rgba(0, 229, 163, 0.15)' : 'rgba(255, 255, 255, 0.05)'}; color: ${state.adaptiveSettings.enabled ? '#00E5A3' : '#8A8F98'};`,
+                },
+                listeners: {
+                  click: () => {
+                    void displayStore.toggleAdaptiveQuality();
+                  },
+                },
+              },
+              state.adaptiveSettings.enabled ? 'Enabled' : 'Disabled (Default)',
+            ),
+          ),
+
+          // Dynamic Resource Budgeting & Optimization Arbitration (Step 52)
+          h(
+            'div',
+            {
+              attrs: {
+                'data-testid': 'resource-budget-info',
+                style: 'margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.15); font-size: 0.8rem; color: #8A8F98; display: flex; align-items: center; justify-content: space-between;',
+              },
+            },
+            h(
+              'span',
+              {},
+              `📊 Resource Budget Arbiter: Coordinated multi-session load balancing (Target: ${state.resourceBudget.targetAggregateCpuPercent}% CPU, Status: ${state.budgetState})`,
+            ),
+            h(
+              'button',
+              {
+                attrs: {
+                  type: 'button',
+                  'data-testid': 'toggle-resource-budget-button',
+                  style: `padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; border: 1px solid ${state.resourceBudget.enabled ? '#00E5A3' : '#8A8F98'}; background: ${state.resourceBudget.enabled ? 'rgba(0, 229, 163, 0.15)' : 'rgba(255, 255, 255, 0.05)'}; color: ${state.resourceBudget.enabled ? '#00E5A3' : '#8A8F98'};`,
+                },
+                listeners: {
+                  click: () => {
+                    void displayStore.toggleResourceBudget();
+                  },
+                },
+              },
+              state.resourceBudget.enabled ? 'Enabled' : 'Disabled (Default)',
+            ),
+          ),
+
+          // Windows Session Lifecycle & Workstation Lock Awareness (Step 53)
+          h(
+            'div',
+            {
+              attrs: {
+                'data-testid': 'session-policy-info',
+                style: 'margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.15); font-size: 0.8rem; color: #8A8F98; display: flex; align-items: center; justify-content: space-between;',
+              },
+            },
+            h(
+              'span',
+              {},
+              `🔒 Session Lifecycle Awareness: Automatically pauses playback when workstation is locked (Lock: ${state.sessionSnapshot.lockState}, Session: ${state.sessionSnapshot.connectionState})`,
+            ),
+            h(
+              'button',
+              {
+                attrs: {
+                  type: 'button',
+                  'data-testid': 'toggle-lock-pause-button',
+                  style: `padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; border: 1px solid ${state.sessionSettings.enabled ? '#00E5A3' : '#8A8F98'}; background: ${state.sessionSettings.enabled ? 'rgba(0, 229, 163, 0.15)' : 'rgba(255, 255, 255, 0.05)'}; color: ${state.sessionSettings.enabled ? '#00E5A3' : '#8A8F98'};`,
+                },
+                listeners: {
+                  click: () => {
+                    void displayStore.toggleLockPause();
+                  },
+                },
+              },
+              state.sessionSettings.enabled ? 'Enabled' : 'Disabled (Default)',
+            ),
+          ),
+
+          // Windows Display-Power Awareness & Screen-Off Suspension (Step 54)
+          h(
+            'div',
+            {
+              attrs: {
+                'data-testid': 'display-power-policy-info',
+                style: 'margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.15); font-size: 0.8rem; color: #8A8F98; display: flex; align-items: center; justify-content: space-between;',
+              },
+            },
+            h(
+              'span',
+              {},
+              `🖥️ Display-Power Awareness: Suspends rendering when display powers off (Display: ${state.displayPowerSnapshot.state}, Scope: ${state.displayPowerSnapshot.scope})`,
+            ),
+            h(
+              'button',
+              {
+                attrs: {
+                  type: 'button',
+                  'data-testid': 'toggle-display-power-button',
+                  style: `padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; border: 1px solid ${state.displayPowerSettings.enabled ? '#00E5A3' : '#8A8F98'}; background: ${state.displayPowerSettings.enabled ? 'rgba(0, 229, 163, 0.15)' : 'rgba(255, 255, 255, 0.05)'}; color: ${state.displayPowerSettings.enabled ? '#00E5A3' : '#8A8F98'};`,
+                },
+                listeners: {
+                  click: () => {
+                    void displayStore.toggleDisplayPowerPause();
+                  },
+                },
+              },
+              state.displayPowerSettings.enabled ? 'Enabled' : 'Disabled (Default)',
+            ),
+          ),
+
+          // Windows User-Inactivity Awareness & Idle Suspension (Step 55)
+          h(
+            'div',
+            {
+              attrs: {
+                'data-testid': 'inactivity-policy-info',
+                style: 'margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.15); font-size: 0.8rem; color: #8A8F98; display: flex; align-items: center; justify-content: space-between;',
+              },
+            },
+            h(
+              'span',
+              {},
+              `⏳ User-Inactivity Awareness: Pauses playback on session idle (State: ${state.inactivitySnapshot.state}, Threshold: ${Math.round(state.inactivitySettings.idleThresholdMillis / 60000)}m)`,
+            ),
+            h(
+              'button',
+              {
+                attrs: {
+                  type: 'button',
+                  'data-testid': 'toggle-inactivity-button',
+                  style: `padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; border: 1px solid ${state.inactivitySettings.enabled ? '#00E5A3' : '#8A8F98'}; background: ${state.inactivitySettings.enabled ? 'rgba(0, 229, 163, 0.15)' : 'rgba(255, 255, 255, 0.05)'}; color: ${state.inactivitySettings.enabled ? '#00E5A3' : '#8A8F98'};`,
+                },
+                listeners: {
+                  click: () => {
+                    void displayStore.toggleInactivityPause();
+                  },
+                },
+              },
+              state.inactivitySettings.enabled ? 'Enabled' : 'Disabled (Default)',
             ),
           ),
 

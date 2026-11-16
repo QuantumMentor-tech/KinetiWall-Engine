@@ -14,12 +14,26 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+use crate::arbitration::{
+    ArbitrationDiagnosticEvent, EffectivePlaybackDecision, PolicyArbitrator,
+    SessionArbitrationInput, MAX_ARBITRATION_DIAGNOSTICS,
+};
 use crate::display::{DisplayId, DisplayTopologySnapshot};
+use crate::display_power::{
+    DisplayPowerPlaybackSettings, DisplayPowerPolicyEvaluation, DisplayPowerSnapshot,
+    DisplayPowerState,
+};
+use crate::inactivity::{
+    InactivityPlaybackSettings, InactivityPolicyEvaluation, InactivitySnapshot, InactivityState,
+};
 use crate::layout::MultiMonitorLayoutMode;
 use crate::power::{PowerPlaybackSettings, PowerPolicyEvaluation, SystemPowerSnapshot};
 use crate::provider::DesktopWindowProvider;
 use crate::session::{DisplaySessionCoordinator, DisplaySessionState, SessionError};
 use crate::types::{DiscoveryError, NativeWindowHandle, WindowRect};
+use crate::win_session::{
+    SessionPlaybackSettings, SessionPolicyEvaluation, WindowsSessionSnapshot, WorkstationLockState,
+};
 
 /// Maximum diagnostic event history entries retained in memory.
 pub const MAX_POLICY_DIAGNOSTIC_EVENTS: usize = 256;
@@ -307,6 +321,14 @@ pub enum PauseReason {
     PowerSaving,
     /// Suspended due to system suspension (sleep/hibernate).
     SystemSuspended,
+    /// Suspended due to Windows workstation lock (Step 53).
+    WorkstationLocked,
+    /// Suspended due to Remote Desktop session optimization policy (Step 53).
+    RemoteSession,
+    /// Suspended due to display powered off or dimmed according to display power policy (Step 54).
+    DisplayPowerOff,
+    /// Suspended due to user inactivity / session input idle policy (Step 55).
+    UserInactivity,
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -331,6 +353,21 @@ pub enum PolicyEventType {
     PowerPolicyCleared,
     SystemSuspendDetected,
     SystemResumeDetected,
+    SessionStateChanged,
+    SessionLockDetected,
+    SessionUnlockDetected,
+    SessionPolicyApplied,
+    SessionPolicyCleared,
+    DisplayPowerStateChanged,
+    DisplayPowerOffDetected,
+    DisplayPowerOnDetected,
+    DisplayPowerPolicyApplied,
+    DisplayPowerPolicyCleared,
+    UserInactivityDetected,
+    UserActivityResumed,
+    InactivityPolicyApplied,
+    InactivityPolicyCleared,
+    ArbitrationReconciled,
     Error,
 }
 
@@ -430,12 +467,19 @@ pub struct SmartPlaybackPolicyEvaluator {
     settings: FullscreenPlaybackSettings,
     power_settings: PowerPlaybackSettings,
     current_power_snapshot: SystemPowerSnapshot,
+    session_settings: SessionPlaybackSettings,
+    current_session_snapshot: WindowsSessionSnapshot,
+    display_power_settings: DisplayPowerPlaybackSettings,
+    current_display_power_snapshot: DisplayPowerSnapshot,
+    inactivity_settings: InactivityPlaybackSettings,
+    current_inactivity_snapshot: InactivitySnapshot,
     session_coordinator: Arc<Mutex<DisplaySessionCoordinator>>,
     observer: DesktopForegroundObserver,
     active_pause_reasons: HashMap<DisplayId, HashSet<PauseReason>>,
     last_classification: FullscreenClassification,
     pending_fullscreen_candidate: Option<(DisplayId, u64)>, // (DisplayId, first_detected_millis)
     diagnostic_history: Vec<PolicyDiagnosticEvent>,
+    arbitration_diagnostics: Vec<ArbitrationDiagnosticEvent>,
 }
 
 impl SmartPlaybackPolicyEvaluator {
@@ -451,12 +495,19 @@ impl SmartPlaybackPolicyEvaluator {
             settings,
             power_settings: PowerPlaybackSettings::default(),
             current_power_snapshot: SystemPowerSnapshot::default(),
+            session_settings: SessionPlaybackSettings::default(),
+            current_session_snapshot: WindowsSessionSnapshot::default(),
+            display_power_settings: DisplayPowerPlaybackSettings::default(),
+            current_display_power_snapshot: DisplayPowerSnapshot::default(),
+            inactivity_settings: InactivityPlaybackSettings::default(),
+            current_inactivity_snapshot: InactivitySnapshot::default(),
             session_coordinator,
             observer,
             active_pause_reasons: HashMap::new(),
             last_classification: FullscreenClassification::NotFullscreen,
             pending_fullscreen_candidate: None,
             diagnostic_history: Vec::new(),
+            arbitration_diagnostics: Vec::new(),
         }
     }
 
@@ -473,12 +524,19 @@ impl SmartPlaybackPolicyEvaluator {
             settings,
             power_settings,
             current_power_snapshot: SystemPowerSnapshot::default(),
+            session_settings: SessionPlaybackSettings::default(),
+            current_session_snapshot: WindowsSessionSnapshot::default(),
+            display_power_settings: DisplayPowerPlaybackSettings::default(),
+            current_display_power_snapshot: DisplayPowerSnapshot::default(),
+            inactivity_settings: InactivityPlaybackSettings::default(),
+            current_inactivity_snapshot: InactivitySnapshot::default(),
             session_coordinator,
             observer,
             active_pause_reasons: HashMap::new(),
             last_classification: FullscreenClassification::NotFullscreen,
             pending_fullscreen_candidate: None,
             diagnostic_history: Vec::new(),
+            arbitration_diagnostics: Vec::new(),
         }
     }
 
@@ -514,6 +572,169 @@ impl SmartPlaybackPolicyEvaluator {
         self.active_pause_reasons
             .get(display_id)
             .map_or(false, |set| set.contains(&PauseReason::SystemSuspended))
+    }
+
+    /// Retrieves current Windows session policy settings.
+    #[must_use]
+    pub fn session_settings(&self) -> &SessionPlaybackSettings {
+        &self.session_settings
+    }
+
+    /// Retrieves current Windows session snapshot.
+    #[must_use]
+    pub fn session_snapshot(&self) -> &WindowsSessionSnapshot {
+        &self.current_session_snapshot
+    }
+
+    /// Returns true if a display currently has an active workstation locked pause reason.
+    #[must_use]
+    pub fn is_display_workstation_locked(&self, display_id: &DisplayId) -> bool {
+        self.active_pause_reasons
+            .get(display_id)
+            .map_or(false, |set| set.contains(&PauseReason::WorkstationLocked))
+    }
+
+    /// Returns true if a display currently has an active remote session pause reason.
+    #[must_use]
+    pub fn is_display_remote_session_paused(&self, display_id: &DisplayId) -> bool {
+        self.active_pause_reasons
+            .get(display_id)
+            .map_or(false, |set| set.contains(&PauseReason::RemoteSession))
+    }
+
+    /// Returns true if a display currently has an active user manual pause reason.
+    #[must_use]
+    pub fn is_display_manually_paused(&self, display_id: &DisplayId) -> bool {
+        self.active_pause_reasons
+            .get(display_id)
+            .map_or(false, |set| set.contains(&PauseReason::UserManual))
+    }
+
+    /// Retrieves current display power policy settings.
+    #[must_use]
+    pub fn display_power_settings(&self) -> &DisplayPowerPlaybackSettings {
+        &self.display_power_settings
+    }
+
+    /// Retrieves current display power snapshot.
+    #[must_use]
+    pub fn display_power_snapshot(&self) -> &DisplayPowerSnapshot {
+        &self.current_display_power_snapshot
+    }
+
+    /// Returns true if a display currently has an active display power off pause reason.
+    #[must_use]
+    pub fn is_display_power_off_paused(&self, display_id: &DisplayId) -> bool {
+        self.active_pause_reasons
+            .get(display_id)
+            .map_or(false, |set| set.contains(&PauseReason::DisplayPowerOff))
+    }
+
+    /// Retrieves current user inactivity policy settings.
+    #[must_use]
+    pub fn inactivity_settings(&self) -> &InactivityPlaybackSettings {
+        &self.inactivity_settings
+    }
+
+    /// Retrieves current user inactivity snapshot.
+    #[must_use]
+    pub fn inactivity_snapshot(&self) -> &InactivitySnapshot {
+        &self.current_inactivity_snapshot
+    }
+
+    /// Returns true if a display currently has an active user inactivity pause reason.
+    #[must_use]
+    pub fn is_display_inactivity_paused(&self, display_id: &DisplayId) -> bool {
+        self.active_pause_reasons
+            .get(display_id)
+            .map_or(false, |set| set.contains(&PauseReason::UserInactivity))
+    }
+
+    /// Evaluates the deterministic effective playback decision for a specific display.
+    #[must_use]
+    pub fn arbitrate_display_session(&self, display_id: &DisplayId) -> EffectivePlaybackDecision {
+        let (current_state, session_id) = {
+            let sc = self.session_coordinator.lock().unwrap();
+            if let Some(session) = sc.get_session(display_id) {
+                (session.state.clone(), Some(session.session_id))
+            } else {
+                (DisplaySessionState::Uninitialized, None)
+            }
+        };
+
+        let reasons = self
+            .active_pause_reasons
+            .get(display_id)
+            .cloned()
+            .unwrap_or_default();
+
+        let input = SessionArbitrationInput {
+            display_id: display_id.clone(),
+            session_id,
+            current_actual_state: current_state,
+            active_pause_reasons: reasons,
+            allows_static_fallback: self.power_settings.enable_static_fallback
+                || self.display_power_settings.enable_static_fallback
+                || self.inactivity_settings.enable_static_fallback,
+            default_fallback_source: None,
+            adaptive_fps_cap: None,
+            budget_fps_cap: None,
+            canonical_target_fps: 60,
+            is_session_terminated: false,
+            termination_reason: None,
+        };
+
+        PolicyArbitrator::arbitrate(&input)
+    }
+
+    /// Evaluates and reconciles deterministic playback decisions across all displays in the topology.
+    pub fn reconcile_arbitration(
+        &mut self,
+        snapshot: &DisplayTopologySnapshot,
+    ) -> Vec<EffectivePlaybackDecision> {
+        let mut decisions = Vec::new();
+
+        for desc in &snapshot.displays {
+            let decision = self.arbitrate_display_session(&desc.id);
+            if decision.requires_transition {
+                let _ = PolicyArbitrator::reconcile_decision(&decision, &self.session_coordinator);
+                self.record_diagnostic(
+                    PolicyEventType::ArbitrationReconciled,
+                    Some(desc.id.clone()),
+                    format!(
+                        "Arbitrated decision applied: desired={:?}, primary_reason={}, explanations={:?}",
+                        decision.desired_state, decision.primary_reason_code, decision.explanation_codes
+                    ),
+                    None,
+                );
+            }
+
+            // Record bounded arbitration diagnostic event for state tracking
+            if self.arbitration_diagnostics.len() >= MAX_ARBITRATION_DIAGNOSTICS {
+                self.arbitration_diagnostics.remove(0);
+            }
+            self.arbitration_diagnostics.push(ArbitrationDiagnosticEvent {
+                timestamp_millis: decision.evaluated_at_millis,
+                display_id: decision.display_id.clone(),
+                session_id: decision.session_id,
+                desired_state: decision.desired_state.clone(),
+                actual_state: decision.actual_state.clone(),
+                requires_transition: decision.requires_transition,
+                explanation_codes: decision.explanation_codes.clone(),
+                primary_explanation: decision.primary_explanation.clone(),
+                primary_reason_code: decision.primary_reason_code.clone(),
+            });
+
+            decisions.push(decision);
+        }
+
+        decisions
+    }
+
+    /// Retrieves bounded arbitration diagnostic history.
+    #[must_use]
+    pub fn arbitration_diagnostics(&self) -> &[ArbitrationDiagnosticEvent] {
+        &self.arbitration_diagnostics
     }
 
     /// Updates fullscreen policy settings and reconciles active sessions if disabled.
@@ -1018,6 +1239,641 @@ impl SmartPlaybackPolicyEvaluator {
                 PolicyEventType::PowerPolicyCleared,
                 Some(did.clone()),
                 format!("Resumed wallpaper session on display `{}` as power constraints cleared", did),
+                None,
+            );
+        }
+    }
+
+    /// Updates session policy settings and reconciles active sessions if disabled.
+    pub fn update_session_settings(
+        &mut self,
+        new_settings: SessionPlaybackSettings,
+        snapshot: &DisplayTopologySnapshot,
+    ) {
+        let was_enabled = self.session_settings.enabled;
+        self.session_settings = new_settings;
+
+        self.record_diagnostic(
+            PolicyEventType::SettingUpdated,
+            None,
+            format!(
+                "Session policy settings updated (enabled: {}, pause_on_lock: {}, optimize_remote: {})",
+                self.session_settings.enabled,
+                self.session_settings.pause_on_lock,
+                self.session_settings.optimize_remote_session
+            ),
+            None,
+        );
+
+        let snap = self.current_session_snapshot.clone();
+        if was_enabled && !self.session_settings.enabled {
+            self.reconcile_lock_cleared(snapshot);
+            self.reconcile_remote_cleared(snapshot);
+        } else {
+            self.evaluate_session_state(&snap, snapshot);
+        }
+    }
+
+    /// Evaluates current Windows session state and reconciles wallpaper sessions across all displays.
+    pub fn evaluate_session_state(
+        &mut self,
+        session_snapshot: &WindowsSessionSnapshot,
+        snapshot: &DisplayTopologySnapshot,
+    ) {
+        self.current_session_snapshot = session_snapshot.clone();
+
+        self.record_diagnostic(
+            PolicyEventType::SessionStateChanged,
+            None,
+            format!(
+                "Windows session state observed: lock={:?}, connection={:?}, session_id={:?}",
+                session_snapshot.lock_state,
+                session_snapshot.connection_state,
+                session_snapshot.session_id
+            ),
+            None,
+        );
+
+        let eval = SessionPolicyEvaluation::evaluate(&self.session_settings, session_snapshot);
+
+        if eval.should_pause {
+            let trigger = eval
+                .trigger_reason
+                .unwrap_or_else(|| "Session policy active".into());
+            if session_snapshot.lock_state == WorkstationLockState::Locked {
+                self.apply_lock_pause(&trigger, snapshot);
+            } else {
+                self.apply_remote_pause(&trigger, snapshot);
+            }
+        } else {
+            if session_snapshot.lock_state != WorkstationLockState::Locked {
+                self.reconcile_lock_cleared(snapshot);
+            }
+            if session_snapshot.connection_state != crate::win_session::SessionConnectionState::RemoteConnected {
+                self.reconcile_remote_cleared(snapshot);
+            }
+        }
+    }
+
+    /// Handles explicit workstation lock event.
+    pub fn handle_workstation_lock(&mut self, snapshot: &DisplayTopologySnapshot) {
+        self.current_session_snapshot.lock_state = WorkstationLockState::Locked;
+        self.record_diagnostic(
+            PolicyEventType::SessionLockDetected,
+            None,
+            "Windows workstation lock detected".into(),
+            None,
+        );
+
+        if self.session_settings.enabled && self.session_settings.pause_on_lock {
+            self.apply_lock_pause("Workstation is locked", snapshot);
+        }
+    }
+
+    /// Handles explicit workstation unlock event.
+    pub fn handle_workstation_unlock(&mut self, snapshot: &DisplayTopologySnapshot) {
+        self.current_session_snapshot.lock_state = WorkstationLockState::Unlocked;
+        self.record_diagnostic(
+            PolicyEventType::SessionUnlockDetected,
+            None,
+            "Windows workstation unlock detected".into(),
+            None,
+        );
+
+        self.reconcile_lock_cleared(snapshot);
+    }
+
+    /// Applies workstation-lock pause across all displays participating in desktop presentation.
+    fn apply_lock_pause(&mut self, trigger: &str, snapshot: &DisplayTopologySnapshot) {
+        let mut suspended = Vec::new();
+        {
+            let mut sc = self.session_coordinator.lock().unwrap();
+            for desc in &snapshot.displays {
+                let did = &desc.id;
+                let reasons = self.active_pause_reasons.entry(did.clone()).or_default();
+                let reason = PauseReason::WorkstationLocked;
+
+                if !reasons.contains(&reason) {
+                    reasons.insert(reason);
+
+                    if let Some(session) = sc.get_session(did) {
+                        if session.state.is_active() {
+                            let _ = sc.suspend_session(did);
+                            suspended.push(did.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        for did in suspended {
+            self.record_diagnostic(
+                PolicyEventType::SessionPolicyApplied,
+                Some(did.clone()),
+                format!("Paused display `{}` due to workstation lock: {}", did, trigger),
+                None,
+            );
+        }
+    }
+
+    /// Reconciles displays when workstation lock clears.
+    fn reconcile_lock_cleared(&mut self, snapshot: &DisplayTopologySnapshot) {
+        let mut to_resume = Vec::new();
+        let mut manual_overrides = Vec::new();
+
+        for desc in &snapshot.displays {
+            let did = &desc.id;
+
+            if let Some(reasons) = self.active_pause_reasons.get_mut(did) {
+                reasons.remove(&PauseReason::WorkstationLocked);
+
+                // Resume ONLY if no other pause reasons remain (e.g. no UserManual, Fullscreen, PowerSaving, SystemSuspended!)
+                if reasons.is_empty() {
+                    to_resume.push(did.clone());
+                } else {
+                    manual_overrides.push((did.clone(), format!("{:?}", reasons)));
+                }
+            }
+        }
+
+        for (did, reasons_str) in manual_overrides {
+            self.record_diagnostic(
+                PolicyEventType::ManualOverrideRespected,
+                Some(did.clone()),
+                format!(
+                    "Display `{}` retained in suspended state after workstation unlock due to surviving reasons: {}",
+                    did, reasons_str
+                ),
+                None,
+            );
+        }
+
+        let mut resumed = Vec::new();
+        {
+            let mut sc = self.session_coordinator.lock().unwrap();
+            for did in to_resume {
+                if let Some(session) = sc.get_session(&did) {
+                    if matches!(
+                        session.state,
+                        DisplaySessionState::Suspended | DisplaySessionState::StaticFallback { .. }
+                    ) {
+                        let _ = sc.resume_session(&did);
+                        resumed.push(did);
+                    }
+                }
+            }
+        }
+
+        for did in resumed {
+            self.record_diagnostic(
+                PolicyEventType::SessionPolicyCleared,
+                Some(did.clone()),
+                format!("Resumed wallpaper session on display `{}` as workstation unlocked", did),
+                None,
+            );
+        }
+    }
+
+    /// Applies Remote Desktop optimization pause across all displays.
+    fn apply_remote_pause(&mut self, trigger: &str, snapshot: &DisplayTopologySnapshot) {
+        let mut suspended = Vec::new();
+        {
+            let mut sc = self.session_coordinator.lock().unwrap();
+            for desc in &snapshot.displays {
+                let did = &desc.id;
+                let reasons = self.active_pause_reasons.entry(did.clone()).or_default();
+                let reason = PauseReason::RemoteSession;
+
+                if !reasons.contains(&reason) {
+                    reasons.insert(reason);
+
+                    if let Some(session) = sc.get_session(did) {
+                        if session.state.is_active() {
+                            let _ = sc.suspend_session(did);
+                            suspended.push(did.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        for did in suspended {
+            self.record_diagnostic(
+                PolicyEventType::SessionPolicyApplied,
+                Some(did.clone()),
+                format!("Paused display `{}` due to Remote Desktop policy: {}", did, trigger),
+                None,
+            );
+        }
+    }
+
+    /// Reconciles displays when Remote Desktop session constraints clear.
+    fn reconcile_remote_cleared(&mut self, snapshot: &DisplayTopologySnapshot) {
+        let mut to_resume = Vec::new();
+        let mut manual_overrides = Vec::new();
+
+        for desc in &snapshot.displays {
+            let did = &desc.id;
+
+            if let Some(reasons) = self.active_pause_reasons.get_mut(did) {
+                reasons.remove(&PauseReason::RemoteSession);
+
+                if reasons.is_empty() {
+                    to_resume.push(did.clone());
+                } else {
+                    manual_overrides.push((did.clone(), format!("{:?}", reasons)));
+                }
+            }
+        }
+
+        for (did, reasons_str) in manual_overrides {
+            self.record_diagnostic(
+                PolicyEventType::ManualOverrideRespected,
+                Some(did.clone()),
+                format!(
+                    "Display `{}` retained in suspended state after remote session cleared due to surviving reasons: {}",
+                    did, reasons_str
+                ),
+                None,
+            );
+        }
+
+        let mut resumed = Vec::new();
+        {
+            let mut sc = self.session_coordinator.lock().unwrap();
+            for did in to_resume {
+                if let Some(session) = sc.get_session(&did) {
+                    if matches!(
+                        session.state,
+                        DisplaySessionState::Suspended | DisplaySessionState::StaticFallback { .. }
+                    ) {
+                        let _ = sc.resume_session(&did);
+                        resumed.push(did);
+                    }
+                }
+            }
+        }
+
+        for did in resumed {
+            self.record_diagnostic(
+                PolicyEventType::SessionPolicyCleared,
+                Some(did.clone()),
+                format!("Resumed wallpaper session on display `{}` as remote session cleared", did),
+                None,
+            );
+        }
+    }
+
+    /// Updates display power policy settings and reconciles active sessions if disabled.
+    pub fn update_display_power_settings(
+        &mut self,
+        new_settings: DisplayPowerPlaybackSettings,
+        snapshot: &DisplayTopologySnapshot,
+    ) {
+        let was_enabled = self.display_power_settings.enabled;
+        self.display_power_settings = new_settings;
+
+        self.record_diagnostic(
+            PolicyEventType::SettingUpdated,
+            None,
+            format!(
+                "Display power policy settings updated (enabled: {}, pause_on_off: {}, resume_on_on: {}, dimmed: {:?})",
+                self.display_power_settings.enabled,
+                self.display_power_settings.pause_on_display_off,
+                self.display_power_settings.resume_on_display_on,
+                self.display_power_settings.dimmed_action
+            ),
+            None,
+        );
+
+        let snap = self.current_display_power_snapshot.clone();
+        if was_enabled && !self.display_power_settings.enabled {
+            self.reconcile_display_power_cleared(snapshot);
+        } else {
+            self.evaluate_display_power_state(&snap, snapshot);
+        }
+    }
+
+    /// Evaluates current display power state and reconciles wallpaper sessions across all displays.
+    pub fn evaluate_display_power_state(
+        &mut self,
+        display_power_snapshot: &DisplayPowerSnapshot,
+        snapshot: &DisplayTopologySnapshot,
+    ) {
+        self.current_display_power_snapshot = display_power_snapshot.clone();
+
+        self.record_diagnostic(
+            PolicyEventType::DisplayPowerStateChanged,
+            None,
+            format!(
+                "Display power state observed: state={:?}, scope={:?}",
+                display_power_snapshot.state, display_power_snapshot.scope
+            ),
+            None,
+        );
+
+        let eval = DisplayPowerPolicyEvaluation::evaluate(
+            &self.display_power_settings,
+            display_power_snapshot,
+        );
+
+        if eval.should_pause {
+            let trigger = eval
+                .trigger_reason
+                .unwrap_or_else(|| "Display power policy active".into());
+            self.apply_display_power_pause(&trigger, snapshot);
+        } else if display_power_snapshot.state == DisplayPowerState::On {
+            self.reconcile_display_power_cleared(snapshot);
+        }
+    }
+
+    /// Handles explicit display power off notification.
+    pub fn handle_display_off(&mut self, snapshot: &DisplayTopologySnapshot) {
+        self.current_display_power_snapshot.state = DisplayPowerState::Off;
+        self.record_diagnostic(
+            PolicyEventType::DisplayPowerOffDetected,
+            None,
+            "Display power off detected via session notification".into(),
+            None,
+        );
+
+        if self.display_power_settings.enabled && self.display_power_settings.pause_on_display_off {
+            self.apply_display_power_pause("Session display is powered off", snapshot);
+        }
+    }
+
+    /// Handles explicit display power on notification.
+    pub fn handle_display_on(&mut self, snapshot: &DisplayTopologySnapshot) {
+        self.current_display_power_snapshot.state = DisplayPowerState::On;
+        self.record_diagnostic(
+            PolicyEventType::DisplayPowerOnDetected,
+            None,
+            "Display power on detected via session notification".into(),
+            None,
+        );
+
+        self.reconcile_display_power_cleared(snapshot);
+    }
+
+    /// Applies display-power pause across all displays participating in desktop presentation.
+    fn apply_display_power_pause(&mut self, trigger: &str, snapshot: &DisplayTopologySnapshot) {
+        let mut suspended = Vec::new();
+        {
+            let mut sc = self.session_coordinator.lock().unwrap();
+            for desc in &snapshot.displays {
+                let did = &desc.id;
+                let reasons = self.active_pause_reasons.entry(did.clone()).or_default();
+                let reason = PauseReason::DisplayPowerOff;
+
+                if !reasons.contains(&reason) {
+                    reasons.insert(reason);
+
+                    if let Some(session) = sc.get_session(did) {
+                        if session.state.is_active() {
+                            let _ = sc.suspend_session(did);
+                            suspended.push(did.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        for did in suspended {
+            self.record_diagnostic(
+                PolicyEventType::DisplayPowerPolicyApplied,
+                Some(did.clone()),
+                format!("Paused display `{}` due to display power policy: {}", did, trigger),
+                None,
+            );
+        }
+    }
+
+    /// Reconciles displays when display-power constraints clear (display returns to On).
+    fn reconcile_display_power_cleared(&mut self, snapshot: &DisplayTopologySnapshot) {
+        let mut to_resume = Vec::new();
+        let mut manual_overrides = Vec::new();
+
+        for desc in &snapshot.displays {
+            let did = &desc.id;
+
+            if let Some(reasons) = self.active_pause_reasons.get_mut(did) {
+                reasons.remove(&PauseReason::DisplayPowerOff);
+
+                // Resume ONLY if no other pause reasons remain (e.g. no UserManual, Fullscreen, PowerSaving, SystemSuspended, WorkstationLocked, RemoteSession!)
+                if reasons.is_empty() {
+                    to_resume.push(did.clone());
+                } else {
+                    manual_overrides.push((did.clone(), format!("{:?}", reasons)));
+                }
+            }
+        }
+
+        for (did, reasons_str) in manual_overrides {
+            self.record_diagnostic(
+                PolicyEventType::ManualOverrideRespected,
+                Some(did.clone()),
+                format!(
+                    "Display `{}` retained in suspended state after display power on due to surviving reasons: {}",
+                    did, reasons_str
+                ),
+                None,
+            );
+        }
+
+        let mut resumed = Vec::new();
+        {
+            let mut sc = self.session_coordinator.lock().unwrap();
+            for did in to_resume {
+                if let Some(session) = sc.get_session(&did) {
+                    if matches!(
+                        session.state,
+                        DisplaySessionState::Suspended | DisplaySessionState::StaticFallback { .. }
+                    ) {
+                        let _ = sc.resume_session(&did);
+                        resumed.push(did);
+                    }
+                }
+            }
+        }
+
+        for did in resumed {
+            self.record_diagnostic(
+                PolicyEventType::DisplayPowerPolicyCleared,
+                Some(did.clone()),
+                format!("Resumed wallpaper session on display `{}` as display powered on", did),
+                None,
+            );
+        }
+    }
+
+    /// Updates user inactivity policy settings and reconciles active sessions if disabled.
+    pub fn update_inactivity_settings(
+        &mut self,
+        new_settings: InactivityPlaybackSettings,
+        snapshot: &DisplayTopologySnapshot,
+    ) {
+        let was_enabled = self.inactivity_settings.enabled;
+        self.inactivity_settings = new_settings;
+
+        self.record_diagnostic(
+            PolicyEventType::SettingUpdated,
+            None,
+            format!(
+                "User inactivity policy settings updated (enabled: {}, threshold_ms: {}, resume_on_activity: {})",
+                self.inactivity_settings.enabled,
+                self.inactivity_settings.clamped_threshold(),
+                self.inactivity_settings.resume_on_activity
+            ),
+            None,
+        );
+
+        let snap = self.current_inactivity_snapshot.clone();
+        if was_enabled && !self.inactivity_settings.enabled {
+            self.reconcile_inactivity_cleared(snapshot);
+        } else {
+            self.evaluate_inactivity_state(&snap, snapshot);
+        }
+    }
+
+    /// Evaluates current user inactivity state and reconciles wallpaper sessions across all displays.
+    pub fn evaluate_inactivity_state(
+        &mut self,
+        inactivity_snapshot: &InactivitySnapshot,
+        snapshot: &DisplayTopologySnapshot,
+    ) {
+        self.current_inactivity_snapshot = inactivity_snapshot.clone();
+
+        let eval = InactivityPolicyEvaluation::evaluate(
+            &self.inactivity_settings,
+            inactivity_snapshot,
+        );
+
+        if eval.should_pause {
+            let trigger = eval
+                .trigger_reason
+                .unwrap_or_else(|| "User inactivity policy active".into());
+            self.apply_inactivity_pause(&trigger, snapshot);
+        } else if inactivity_snapshot.state == InactivityState::Active {
+            self.reconcile_inactivity_cleared(snapshot);
+        }
+    }
+
+    /// Handles explicit user inactivity detection.
+    pub fn handle_user_inactivity(&mut self, elapsed_millis: u64, snapshot: &DisplayTopologySnapshot) {
+        self.current_inactivity_snapshot.state = InactivityState::Idle;
+        self.current_inactivity_snapshot.elapsed_inactivity_millis = elapsed_millis;
+        self.record_diagnostic(
+            PolicyEventType::UserInactivityDetected,
+            None,
+            format!("User inactivity detected (idle: {} ms)", elapsed_millis),
+            None,
+        );
+
+        if self.inactivity_settings.enabled {
+            self.apply_inactivity_pause("User input inactive", snapshot);
+        }
+    }
+
+    /// Handles explicit user activity resumed in the session.
+    pub fn handle_user_activity(&mut self, snapshot: &DisplayTopologySnapshot) {
+        self.current_inactivity_snapshot.state = InactivityState::Active;
+        self.current_inactivity_snapshot.elapsed_inactivity_millis = 0;
+        self.record_diagnostic(
+            PolicyEventType::UserActivityResumed,
+            None,
+            "User activity resumed in interactive session".into(),
+            None,
+        );
+
+        self.reconcile_inactivity_cleared(snapshot);
+    }
+
+    /// Applies user inactivity pause across all displays participating in desktop presentation.
+    fn apply_inactivity_pause(&mut self, trigger: &str, snapshot: &DisplayTopologySnapshot) {
+        let mut suspended = Vec::new();
+        {
+            let mut sc = self.session_coordinator.lock().unwrap();
+            for desc in &snapshot.displays {
+                let did = &desc.id;
+                let reasons = self.active_pause_reasons.entry(did.clone()).or_default();
+                let reason = PauseReason::UserInactivity;
+
+                if !reasons.contains(&reason) {
+                    reasons.insert(reason);
+
+                    if let Some(session) = sc.get_session(did) {
+                        if session.state.is_active() {
+                            let _ = sc.suspend_session(did);
+                            suspended.push(did.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        for did in suspended {
+            self.record_diagnostic(
+                PolicyEventType::InactivityPolicyApplied,
+                Some(did.clone()),
+                format!("Paused display `{}` due to user inactivity: {}", did, trigger),
+                None,
+            );
+        }
+    }
+
+    /// Reconciles displays when user inactivity constraints clear (user activity resumes).
+    fn reconcile_inactivity_cleared(&mut self, snapshot: &DisplayTopologySnapshot) {
+        let mut to_resume = Vec::new();
+        let mut manual_overrides = Vec::new();
+
+        for desc in &snapshot.displays {
+            let did = &desc.id;
+
+            if let Some(reasons) = self.active_pause_reasons.get_mut(did) {
+                reasons.remove(&PauseReason::UserInactivity);
+
+                // Resume ONLY if no other pause reasons remain (e.g. no UserManual, Fullscreen, PowerSaving, SystemSuspended, WorkstationLocked, RemoteSession, DisplayPowerOff!)
+                if reasons.is_empty() {
+                    to_resume.push(did.clone());
+                } else {
+                    manual_overrides.push((did.clone(), format!("{:?}", reasons)));
+                }
+            }
+        }
+
+        for (did, reasons_str) in manual_overrides {
+            self.record_diagnostic(
+                PolicyEventType::ManualOverrideRespected,
+                Some(did.clone()),
+                format!(
+                    "Display `{}` retained in suspended state after user activity resumed due to surviving reasons: {}",
+                    did, reasons_str
+                ),
+                None,
+            );
+        }
+
+        let mut resumed = Vec::new();
+        {
+            let mut sc = self.session_coordinator.lock().unwrap();
+            for did in to_resume {
+                if let Some(session) = sc.get_session(&did) {
+                    if matches!(
+                        session.state,
+                        DisplaySessionState::Suspended | DisplaySessionState::StaticFallback { .. }
+                    ) {
+                        let _ = sc.resume_session(&did);
+                        resumed.push(did);
+                    }
+                }
+            }
+        }
+
+        for did in resumed {
+            self.record_diagnostic(
+                PolicyEventType::InactivityPolicyCleared,
+                Some(did.clone()),
+                format!("Resumed wallpaper session on display `{}` as user activity resumed", did),
                 None,
             );
         }

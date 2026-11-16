@@ -6,16 +6,27 @@
 
 import type { DisplayIpcClient } from '../services/displayIpcClient.ts';
 import type {
+  AdaptiveQualitySettingsDto,
+  AggregateBudgetStateDto,
+  AggregateWorkloadSnapshotDto,
+  ApplicationResourceBudgetDto,
   DisplayId,
+  DisplayPowerPlaybackSettingsDto,
+  DisplayPowerSnapshotDto,
   DisplaySessionStatusDto,
   DisplayTopologySnapshotDto,
+  EffectivePlaybackDecisionDto,
   FullscreenPlaybackSettingsDto,
+  InactivityPlaybackSettingsDto,
+  InactivitySnapshotDto,
   MultiMonitorLayoutMode,
   MultiMonitorStatusDto,
   PowerPlaybackSettingsDto,
   PowerPolicyMode,
   ResolvedDisplayAssignmentDto,
+  SessionPlaybackSettingsDto,
   SystemPowerSnapshotDto,
+  WindowsSessionSnapshotDto,
 } from '../types/display.ts';
 
 export interface DisplayStoreState {
@@ -28,6 +39,17 @@ export interface DisplayStoreState {
   fullscreenPolicy: FullscreenPlaybackSettingsDto;
   powerSnapshot: SystemPowerSnapshotDto;
   powerSettings: PowerPlaybackSettingsDto;
+  adaptiveSettings: AdaptiveQualitySettingsDto;
+  resourceBudget: ApplicationResourceBudgetDto;
+  budgetState: AggregateBudgetStateDto;
+  workloadSnapshot: AggregateWorkloadSnapshotDto | null;
+  sessionSnapshot: WindowsSessionSnapshotDto;
+  sessionSettings: SessionPlaybackSettingsDto;
+  displayPowerSnapshot: DisplayPowerSnapshotDto;
+  displayPowerSettings: DisplayPowerPlaybackSettingsDto;
+  inactivitySnapshot: InactivitySnapshotDto;
+  inactivitySettings: InactivityPlaybackSettingsDto;
+  policyDecisions: Record<DisplayId, EffectivePlaybackDecisionDto>;
   isLoading: boolean;
   isSaving: boolean;
   isApplying: boolean;
@@ -76,6 +98,68 @@ export class DisplayStore {
         pauseOnSystemSuspend: true,
         enableStaticFallback: true,
       },
+      adaptiveSettings: {
+        enabled: false,
+        targetFpsFloor: 30,
+        sustainedPressureThresholdMs: 3000,
+        recoveryDwellThresholdMs: 5000,
+        cpuPressureThresholdPercent: 75.0,
+        cpuRecoveryThresholdPercent: 40.0,
+        adjustmentCooldownMs: 4000,
+        allowPowerPolicyCoordination: true,
+      },
+      resourceBudget: {
+        enabled: false,
+        targetAggregateCpuPercent: 75.0,
+        pressureThresholdCpuPercent: 80.0,
+        recoveryThresholdCpuPercent: 45.0,
+        sustainedPressureThresholdMs: 3000,
+        recoveryDwellThresholdMs: 5000,
+        adjustmentCooldownMs: 4000,
+        maxSimultaneousAdjustments: 1,
+        allowPowerCoordination: true,
+      },
+      budgetState: 'disabled',
+      workloadSnapshot: null,
+      sessionSnapshot: {
+        lockState: 'unknown',
+        connectionState: 'unknown',
+        isRegistered: false,
+        lastEventTimestampMillis: 0,
+      },
+      sessionSettings: {
+        enabled: false,
+        pauseOnLock: true,
+        optimizeRemoteSession: false,
+        enableStaticFallback: false,
+      },
+      displayPowerSnapshot: {
+        state: 'on',
+        scope: 'session_display_status',
+        sampledAtMillis: Date.now(),
+        isStale: false,
+      },
+      displayPowerSettings: {
+        enabled: false,
+        pauseOnDisplayOff: true,
+        resumeOnDisplayOn: true,
+        dimmedAction: 'do_nothing',
+        enableStaticFallback: true,
+      },
+      inactivitySnapshot: {
+        state: 'active',
+        elapsedInactivityMillis: 0,
+        idleThresholdMillis: 600000,
+        sampledAtMillis: Date.now(),
+        isFresh: true,
+      },
+      inactivitySettings: {
+        enabled: false,
+        idleThresholdMillis: 600000,
+        resumeOnActivity: true,
+        enableStaticFallback: true,
+      },
+      policyDecisions: {},
       isLoading: false,
       isSaving: false,
       isApplying: false,
@@ -140,13 +224,40 @@ export class DisplayStore {
     this.notify();
 
     try {
-      const [snapshot, resolvedAssignments, multiStatus, fullscreenPolicy, powerSnapshot, powerSettings] = await Promise.all([
+      const [
+        snapshot,
+        resolvedAssignments,
+        multiStatus,
+        fullscreenPolicy,
+        powerSnapshot,
+        powerSettings,
+        adaptiveSettings,
+        resourceBudget,
+        budgetState,
+        workloadSnapshot,
+        sessionSnapshot,
+        sessionSettings,
+        displayPowerSnapshot,
+        displayPowerSettings,
+        inactivitySnapshot,
+        inactivitySettings,
+      ] = await Promise.all([
         this.client.getTopologySnapshot(),
         this.client.getResolvedAssignments(),
         this.client.getMultiMonitorStatus(),
         this.client.getFullscreenPolicySettings(),
         this.client.getSystemPowerSnapshot(),
         this.client.getPowerPlaybackSettings(),
+        this.client.getAdaptiveQualitySettings().catch(() => this.state.adaptiveSettings),
+        this.client.getResourceBudgetSettings().catch(() => this.state.resourceBudget),
+        this.client.getAggregateBudgetState().catch(() => this.state.budgetState),
+        this.client.getAggregateWorkloadSnapshot().catch(() => this.state.workloadSnapshot),
+        this.client.getSessionSnapshot().catch(() => this.state.sessionSnapshot),
+        this.client.getSessionPlaybackSettings().catch(() => this.state.sessionSettings),
+        this.client.getDisplayPowerSnapshot().catch(() => this.state.displayPowerSnapshot),
+        this.client.getDisplayPowerPlaybackSettings().catch(() => this.state.displayPowerSettings),
+        this.client.getInactivitySnapshot().catch(() => this.state.inactivitySnapshot),
+        this.client.getInactivityPlaybackSettings().catch(() => this.state.inactivitySettings),
       ]);
 
       if (requestId !== this.nextRequestId) {
@@ -170,6 +281,16 @@ export class DisplayStore {
         fullscreenPolicy,
         powerSnapshot,
         powerSettings,
+        adaptiveSettings,
+        resourceBudget,
+        budgetState,
+        workloadSnapshot,
+        sessionSnapshot,
+        sessionSettings,
+        displayPowerSnapshot,
+        displayPowerSettings,
+        inactivitySnapshot,
+        inactivitySettings,
         isLoading: false,
         error: null,
         lastUpdatedMillis: Date.now(),
@@ -414,6 +535,256 @@ export class DisplayStore {
     return this.updatePowerSettings({
       enableStaticFallback: !this.state.powerSettings.enableStaticFallback,
     });
+  }
+
+  public async updateAdaptiveQualitySettings(
+    patch: Partial<AdaptiveQualitySettingsDto>,
+  ): Promise<boolean> {
+    const updated: AdaptiveQualitySettingsDto = {
+      ...this.state.adaptiveSettings,
+      ...patch,
+    };
+    this.state = {
+      ...this.state,
+      isSaving: true,
+      error: null,
+    };
+    this.notify();
+
+    try {
+      const result = await this.client.updateAdaptiveQualitySettings(updated);
+      this.state = {
+        ...this.state,
+        adaptiveSettings: result,
+        isSaving: false,
+        error: null,
+        lastUpdatedMillis: Date.now(),
+      };
+      this.notify();
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.state = {
+        ...this.state,
+        isSaving: false,
+        error: `Failed to update adaptive quality settings: ${message}`,
+      };
+      this.notify();
+      return false;
+    }
+  }
+
+  public async toggleAdaptiveQuality(): Promise<boolean> {
+    return this.updateAdaptiveQualitySettings({
+      enabled: !this.state.adaptiveSettings.enabled,
+    });
+  }
+
+  public async updateResourceBudgetSettings(
+    patch: Partial<ApplicationResourceBudgetDto>,
+  ): Promise<boolean> {
+    const updated: ApplicationResourceBudgetDto = {
+      ...this.state.resourceBudget,
+      ...patch,
+    };
+    this.state = {
+      ...this.state,
+      isSaving: true,
+      error: null,
+    };
+    this.notify();
+
+    try {
+      const result = await this.client.updateResourceBudgetSettings(updated);
+      const budgetState = await this.client.getAggregateBudgetState().catch(() => this.state.budgetState);
+      const workloadSnapshot = await this.client.getAggregateWorkloadSnapshot().catch(() => this.state.workloadSnapshot);
+      this.state = {
+        ...this.state,
+        resourceBudget: result,
+        budgetState,
+        workloadSnapshot,
+        isSaving: false,
+        error: null,
+        lastUpdatedMillis: Date.now(),
+      };
+      this.notify();
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.state = {
+        ...this.state,
+        isSaving: false,
+        error: `Failed to update resource budget settings: ${message}`,
+      };
+      this.notify();
+      return false;
+    }
+  }
+
+  public async toggleResourceBudget(): Promise<boolean> {
+    return this.updateResourceBudgetSettings({
+      enabled: !this.state.resourceBudget.enabled,
+    });
+  }
+
+  public async updateSessionPlaybackSettings(
+    patch: Partial<SessionPlaybackSettingsDto>,
+  ): Promise<boolean> {
+    const updated: SessionPlaybackSettingsDto = {
+      ...this.state.sessionSettings,
+      ...patch,
+    };
+    this.state = {
+      ...this.state,
+      isSaving: true,
+      error: null,
+    };
+    this.notify();
+
+    try {
+      const result = await this.client.updateSessionPlaybackSettings(updated);
+      const sessionSnapshot = await this.client.getSessionSnapshot().catch(() => this.state.sessionSnapshot);
+      this.state = {
+        ...this.state,
+        sessionSettings: result,
+        sessionSnapshot,
+        isSaving: false,
+        error: null,
+        lastUpdatedMillis: Date.now(),
+      };
+      this.notify();
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.state = {
+        ...this.state,
+        isSaving: false,
+        error: `Failed to update session playback settings: ${message}`,
+      };
+      this.notify();
+      return false;
+    }
+  }
+
+  public async toggleLockPause(): Promise<boolean> {
+    const nextEnabled = !this.state.sessionSettings.enabled;
+    return this.updateSessionPlaybackSettings({
+      enabled: nextEnabled,
+      pauseOnLock: true,
+    });
+  }
+
+  public async updateDisplayPowerPlaybackSettings(
+    patch: Partial<DisplayPowerPlaybackSettingsDto>,
+  ): Promise<boolean> {
+    const updated: DisplayPowerPlaybackSettingsDto = {
+      ...this.state.displayPowerSettings,
+      ...patch,
+    };
+    this.state = {
+      ...this.state,
+      isSaving: true,
+      error: null,
+    };
+    this.notify();
+
+    try {
+      const result = await this.client.updateDisplayPowerPlaybackSettings(updated);
+      const displayPowerSnapshot = await this.client
+        .getDisplayPowerSnapshot()
+        .catch(() => this.state.displayPowerSnapshot);
+      this.state = {
+        ...this.state,
+        displayPowerSettings: result,
+        displayPowerSnapshot,
+        isSaving: false,
+        error: null,
+        lastUpdatedMillis: Date.now(),
+      };
+      this.notify();
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.state = {
+        ...this.state,
+        isSaving: false,
+        error: `Failed to update display power playback settings: ${message}`,
+      };
+      this.notify();
+      return false;
+    }
+  }
+
+  public async toggleDisplayPowerPause(): Promise<boolean> {
+    const nextEnabled = !this.state.displayPowerSettings.enabled;
+    return this.updateDisplayPowerPlaybackSettings({
+      enabled: nextEnabled,
+      pauseOnDisplayOff: true,
+      resumeOnDisplayOn: true,
+    });
+  }
+
+  public async updateInactivityPlaybackSettings(
+    patch: Partial<InactivityPlaybackSettingsDto>,
+  ): Promise<boolean> {
+    const updated: InactivityPlaybackSettingsDto = {
+      ...this.state.inactivitySettings,
+      ...patch,
+    };
+    this.state = {
+      ...this.state,
+      isSaving: true,
+      error: null,
+    };
+    this.notify();
+
+    try {
+      const result = await this.client.updateInactivityPlaybackSettings(updated);
+      const inactivitySnapshot = await this.client
+        .getInactivitySnapshot()
+        .catch(() => this.state.inactivitySnapshot);
+      this.state = {
+        ...this.state,
+        inactivitySettings: result,
+        inactivitySnapshot,
+        isSaving: false,
+        error: null,
+        lastUpdatedMillis: Date.now(),
+      };
+      this.notify();
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.state = {
+        ...this.state,
+        isSaving: false,
+        error: `Failed to update user inactivity playback settings: ${message}`,
+      };
+      this.notify();
+      return false;
+    }
+  }
+
+  public async toggleInactivityPause(): Promise<boolean> {
+    const nextEnabled = !this.state.inactivitySettings.enabled;
+    return this.updateInactivityPlaybackSettings({
+      enabled: nextEnabled,
+      resumeOnActivity: true,
+    });
+  }
+
+  /**
+   * Updates or registers an authoritative policy arbitration decision for a display.
+   */
+  public updatePolicyDecision(decision: EffectivePlaybackDecisionDto): void {
+    this.state = {
+      ...this.state,
+      policyDecisions: {
+        ...this.state.policyDecisions,
+        [decision.displayId]: decision,
+      },
+    };
+    this.notify();
   }
 }
 
