@@ -7,7 +7,11 @@
   "scripts": {
     "test": "node --test src-ui/tests/*.test.ts",
     "test:ui": "node --test src-ui/tests/*.test.ts",
-    "verify:build": "node src-ui/scripts/verifyBuild.ts"
+    "test:policy": "cargo test -p kinetiwall-desktop --test policy_integration_tests --test arbitration_tests",
+    "test:desktop": "cargo test -p kinetiwall-desktop",
+    "test:all": "cargo test --workspace && npm test",
+    "verify:build": "node src-ui/scripts/verifyBuild.ts",
+    "verify:gate": "npm run verify:build && npm test && cargo test -p kinetiwall-desktop --test policy_integration_tests --test arbitration_tests"
   }
 }
 

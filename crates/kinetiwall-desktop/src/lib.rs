@@ -39,6 +39,7 @@ pub mod policy;
 pub mod power;
 pub mod provider;
 pub mod session;
+pub mod settings;
 pub mod synchronization;
 pub mod types;
 pub mod win_session;
@@ -150,4 +151,12 @@ pub use inactivity::{
 pub use arbitration::{
     ArbitrationDiagnosticEvent, ConstraintCategory, DesiredSessionState, EffectivePlaybackDecision,
     PolicyArbitrator, PolicyExplanationCode, SessionArbitrationInput, MAX_ARBITRATION_DIAGNOSTICS,
+};
+pub use settings::{
+    migrate_raw, AudioConfig, BatteryAction, DiagnosticsConfig, FileSettingsRepository,
+    FullscreenAction, GeneralConfig, InMemorySettingsRepository, KinetiWallConfig,
+    MonitorAssignmentConfig, PerformanceConfig, RemoteDesktopAction, RenderingConfig,
+    SettingsError, SettingsRepository, StretchMode, ThemePreference, WindowStateAction,
+    BACKUP_CONFIG_EXTENSION, CURRENT_CONFIG_SCHEMA_VERSION, DEFAULT_CONFIG_FILENAME,
+    TEMP_CONFIG_EXTENSION,
 };

@@ -1,0 +1,71 @@
+name: Policy Reliability Gates & Automated CI Verification
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fast-deterministic-checks:
+    name: Fast Deterministic Policy & UI Checks
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run Frontend Bundle & SSR Verification
+        run: npm run verify:build
+
+      - name: Run Frontend UI Tests
+        run: npm test
+
+  policy-integration-gate:
+    name: Policy Arbitration & Reliability Gate
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Policy Integration & Fault Injection Tests
+        run: cargo test -p kinetiwall-desktop --test policy_integration_tests --test arbitration_tests
+
+      - name: Run Full Desktop Subsystem Tests
+        run: cargo test -p kinetiwall-desktop
+
+  workspace-full-regression:
+    name: Workspace Full Regression (All Crates)
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run All Workspace Tests
+        run: cargo test --workspace
+

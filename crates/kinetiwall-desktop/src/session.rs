@@ -1091,6 +1091,31 @@ impl DisplaySessionCoordinator {
         Ok(())
     }
 
+    /// Explicitly transitions an active session to a failed state (for backend error handling or testing fault-injection).
+    pub fn mark_session_failed(
+        &mut self,
+        display_id: &DisplayId,
+        reason: &str,
+    ) -> Result<(), SessionError> {
+        let session = self
+            .sessions
+            .get_mut(display_id)
+            .ok_or_else(|| SessionError::DisplayHasNoSession(display_id.clone()))?;
+
+        session.state = DisplaySessionState::Failed {
+            reason: reason.to_string(),
+        };
+        session.last_updated_millis = Self::current_timestamp_millis();
+        let session_id = session.session_id;
+        self.record_diagnostic(
+            Some(session_id),
+            display_id.clone(),
+            SessionEventType::Failed,
+            format!("Session `{}` failed: {}", session_id, reason),
+        );
+        Ok(())
+    }
+
     /// Orderly shuts down all active sessions, detaching surfaces and cleaning up windows.
     pub fn shutdown(&mut self) -> Result<(), SessionError> {
         if self.is_shut_down {
