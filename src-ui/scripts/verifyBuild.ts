@@ -8,13 +8,25 @@ import assert from 'node:assert/strict';
 import { AppShellController } from '../components/shell/AppShell.ts';
 import { renderToHtml } from '../components/primitives/uiNode.ts';
 import { CatalogIpcClient } from '../services/catalogIpcClient.ts';
+import { SettingsIpcClient, createMockSettingsIpcTransport } from '../services/settingsIpcClient.ts';
 import { CatalogStore } from '../stores/catalogStore.ts';
 import { RouterStore } from '../stores/routerStore.ts';
+import { SettingsStore } from '../stores/settingsStore.ts';
 import { computeResponsiveGridMetrics, NEON_GLASS_TOKENS } from '../styles/tokens.ts';
+import { calculateContrastRatio } from '../types/theme.ts';
 
 async function main(): Promise<void> {
   assert.equal(NEON_GLASS_TOKENS.colors.surfaceVoid, '#0A0B10');
   assert.equal(NEON_GLASS_TOKENS.colors.accentCyan, '#00F0FF');
+  assert.equal(NEON_GLASS_TOKENS.dark.surfaceVoid, '#0A0B10');
+  assert.equal(NEON_GLASS_TOKENS.light.surfaceVoid, '#F0F2F8');
+
+  // Verify WCAG AAA (>7:1) contrast ratio for light theme primary text
+  const lightContrast = calculateContrastRatio(
+    NEON_GLASS_TOKENS.light.textPrimary,
+    NEON_GLASS_TOKENS.light.surfaceAcrylic,
+  );
+  assert.ok(lightContrast >= 7.0, `Expected WCAG AAA contrast >= 7.0, got ${lightContrast}`);
 
   const compact = computeResponsiveGridMetrics(960);
   const standard = computeResponsiveGridMetrics(1280);
@@ -78,7 +90,10 @@ async function main(): Promise<void> {
   const catalogStore = new CatalogStore(client);
   await catalogStore.loadCatalog();
 
-  const shell = new AppShellController({ routerStore, catalogStore });
+  const settingsStore = new SettingsStore(new SettingsIpcClient(createMockSettingsIpcTransport()));
+  await settingsStore.loadConfig();
+
+  const shell = new AppShellController({ routerStore, catalogStore, settingsStore });
   const html = renderToHtml(shell.render());
   assert.ok(html.includes('Wallpaper Library'));
   assert.ok(html.includes('Neon Skyline 4K'));
@@ -90,7 +105,18 @@ async function main(): Promise<void> {
   assert.ok(displaysHtml.includes('Presentation Layout Mode'));
   assert.ok(displaysHtml.includes('Display Arrangement'));
 
-  console.log('verifyBuild: OK (All src-ui modules, multi-monitor displays, tokens, and SSR/DOM contracts verified)');
+  // Centralized Settings view verification (Step 61)
+  shell.navigate('settings');
+  const settingsHtml = renderToHtml(shell.render());
+  assert.ok(settingsHtml.includes('Application Settings'));
+  assert.ok(settingsHtml.includes('General Preferences'));
+  assert.ok(settingsHtml.includes('Run on Windows Startup'));
+  assert.ok(settingsHtml.includes('Preferences saved and up to date'));
+  assert.ok(settingsHtml.includes('data-theme="dark"'));
+  assert.ok(settingsHtml.includes('data-reduced-motion="false"'));
+  assert.ok(settingsHtml.includes('Reduced Motion &amp; Animations') || settingsHtml.includes('Reduced Motion & Animations'));
+
+  console.log('verifyBuild: OK (All src-ui modules, multi-monitor displays, settings, themes, tokens, accessibility, and SSR/DOM contracts verified)');
 }
 
 await main();

@@ -100,11 +100,7 @@ describe('Step 27: Wallpaper Library Browsing UI & Responsive Catalog Grid', () 
     const navSettings = findNodeByTestId(tree, 'nav-item-settings');
     assert.equal(navDashboard?.attrs['aria-current'], 'page');
     assert.equal(navLibrary?.attrs['aria-current'], undefined);
-    assert.equal(navSettings?.attrs.disabled, true);
-
-    // Clicking disabled route does not change route
-    assert.equal(clickNode(navSettings!), false);
-    assert.equal(routerStore.getState().activeRoute, 'dashboard');
+    assert.equal(navSettings?.attrs.disabled, false);
 
     // Navigate via Dashboard "Browse Wallpaper Library" button
     const browseBtn = findNodeByTestId(tree, 'dashboard-browse-library-btn');

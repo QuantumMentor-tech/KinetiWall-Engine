@@ -8,8 +8,8 @@ use uuid::Uuid;
 use kinetiwall_desktop::settings::{
     migrate_raw, BatteryAction, FileSettingsRepository, FullscreenAction,
     InMemorySettingsRepository, KinetiWallConfig, MonitorAssignmentConfig,
-    RemoteDesktopAction, SettingsError, SettingsRepository, StretchMode,
-    ThemePreference, BACKUP_CONFIG_EXTENSION, CURRENT_CONFIG_SCHEMA_VERSION,
+    ReducedMotionPreference, RemoteDesktopAction, SettingsError, SettingsRepository,
+    StretchMode, ThemePreference, BACKUP_CONFIG_EXTENSION, CURRENT_CONFIG_SCHEMA_VERSION,
 };
 
 fn create_temp_store_path(test_name: &str) -> PathBuf {
@@ -24,6 +24,7 @@ fn test_default_config_is_valid() {
     let config = KinetiWallConfig::default();
     assert_eq!(config.schema_version, CURRENT_CONFIG_SCHEMA_VERSION);
     assert_eq!(config.general.theme, ThemePreference::System);
+    assert_eq!(config.general.reduced_motion, ReducedMotionPreference::System);
     assert_eq!(config.general.language, "en-US");
     assert_eq!(config.performance.on_fullscreen_app, FullscreenAction::Pause);
     assert_eq!(config.performance.on_battery_power, BatteryAction::Throttle30fps);
@@ -428,5 +429,35 @@ fn test_in_memory_repository() {
     // Restore defaults
     let defaulted = repo.restore_defaults().unwrap();
     assert_eq!(defaulted.general.theme, ThemePreference::System);
+    assert_eq!(defaulted.general.reduced_motion, ReducedMotionPreference::System);
 }
+
+#[test]
+fn test_reduced_motion_backward_compatibility_and_modes() {
+    // 1. JSON without `reduced_motion` field should default to `System`
+    let legacy_general_json = r#"{
+        "autostart": false,
+        "start_minimized": true,
+        "minimize_to_tray": true,
+        "theme": "dark",
+        "language": "en-US"
+    }"#;
+    let parsed: kinetiwall_desktop::settings::GeneralConfig =
+        serde_json::from_str(legacy_general_json).expect("Should deserialize legacy JSON");
+    assert_eq!(parsed.reduced_motion, ReducedMotionPreference::System);
+    assert_eq!(parsed.theme, ThemePreference::Dark);
+
+    // 2. Serialization and deserialization of each mode
+    for (mode, mode_str) in [
+        (ReducedMotionPreference::System, "system"),
+        (ReducedMotionPreference::AlwaysReduce, "always_reduce"),
+        (ReducedMotionPreference::NoPreference, "no_preference"),
+    ] {
+        let serialized = serde_json::to_string(&mode).unwrap();
+        assert_eq!(serialized, format!("\"{}\"", mode_str));
+        let deserialized: ReducedMotionPreference = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, mode);
+    }
+}
+
 

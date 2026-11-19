@@ -10,23 +10,34 @@ import { AlertBanner, Button } from '../primitives/controls.ts';
 import { h, type UiNode } from '../primitives/uiNode.ts';
 import { NAVIGATION_ROUTES, type RouteId } from '../../routes.ts';
 import { DisplayIpcClient, createMockDisplayIpcTransport } from '../../services/displayIpcClient.ts';
+import { SettingsIpcClient, createMockSettingsIpcTransport } from '../../services/settingsIpcClient.ts';
 import type { CatalogStore } from '../../stores/catalogStore.ts';
 import { DisplayStore } from '../../stores/displayStore.ts';
 import type { RouterStore } from '../../stores/routerStore.ts';
+import { SettingsStore } from '../../stores/settingsStore.ts';
+import { ThemeStore } from '../../stores/themeStore.ts';
+import { AccessibilityStore } from '../../stores/accessibilityStore.ts';
 import { DashboardView } from '../../views/DashboardView.ts';
 import { DisplaysView } from '../../views/DisplaysView.ts';
 import { LibraryView } from '../../views/LibraryView.ts';
+import { SettingsView } from '../../views/SettingsView.ts';
 
 export interface AppShellProps {
   routerStore: RouterStore;
   catalogStore: CatalogStore;
   displayStore?: DisplayStore;
+  settingsStore?: SettingsStore;
+  themeStore?: ThemeStore;
+  accessibilityStore?: AccessibilityStore;
 }
 
 export class AppShellController {
   private readonly routerStore: RouterStore;
   private readonly catalogStore: CatalogStore;
   private readonly displayStore: DisplayStore;
+  private readonly settingsStore: SettingsStore;
+  private readonly themeStore: ThemeStore;
+  private readonly accessibilityStore: AccessibilityStore;
   private viewError: string | null = null;
 
   constructor(props: AppShellProps) {
@@ -34,6 +45,37 @@ export class AppShellController {
     this.catalogStore = props.catalogStore;
     this.displayStore =
       props.displayStore ?? new DisplayStore(new DisplayIpcClient(createMockDisplayIpcTransport()));
+    this.settingsStore =
+      props.settingsStore ?? new SettingsStore(new SettingsIpcClient(createMockSettingsIpcTransport()));
+    this.themeStore = props.themeStore ?? new ThemeStore();
+    this.accessibilityStore = props.accessibilityStore ?? new AccessibilityStore();
+
+    // Synchronize initial preferences if settings already loaded
+    const initialSettings = this.settingsStore.getState().persistedConfig;
+    if (initialSettings) {
+      this.themeStore.syncWithSettings(initialSettings);
+      this.accessibilityStore.syncWithSettings(initialSettings);
+    }
+
+    // Apply initial DOM attributes
+    this.themeStore.applyToDom();
+    this.accessibilityStore.applyToDom();
+
+    // Subscribe to settings changes to synchronize theme and accessibility
+    this.settingsStore.subscribe((settingsState) => {
+      if (settingsState.persistedConfig) {
+        this.themeStore.syncWithSettings(settingsState.persistedConfig);
+        this.accessibilityStore.syncWithSettings(settingsState.persistedConfig);
+      }
+      if (settingsState.draftConfig) {
+        if (settingsState.draftConfig.general.theme) {
+          this.themeStore.setPreference(settingsState.draftConfig.general.theme);
+        }
+        if (settingsState.draftConfig.general.reduced_motion) {
+          this.accessibilityStore.setPreference(settingsState.draftConfig.general.reduced_motion);
+        }
+      }
+    });
 
     // If launched directly on the library route, trigger initial catalog load once if still idle
     if (
@@ -51,6 +93,14 @@ export class AppShellController {
       void this.displayStore.refreshTopology();
     }
 
+    // If launched directly on the settings route, trigger initial settings load
+    if (
+      this.routerStore.getState().activeRoute === 'settings' &&
+      !this.settingsStore.getState().persistedConfig
+    ) {
+      void this.settingsStore.loadConfig();
+    }
+
     // Automatically ensure store data is loaded when navigating
     this.routerStore.subscribe((routerState) => {
       if (
@@ -63,6 +113,11 @@ export class AppShellController {
         !this.displayStore.getState().snapshot
       ) {
         void this.displayStore.refreshTopology();
+      } else if (
+        routerState.activeRoute === 'settings' &&
+        !this.settingsStore.getState().persistedConfig
+      ) {
+        void this.settingsStore.loadConfig();
       }
     });
   }
@@ -70,6 +125,14 @@ export class AppShellController {
   navigate(routeId: RouteId): boolean {
     this.viewError = null;
     return this.routerStore.navigate(routeId);
+  }
+
+  getThemeStore(): ThemeStore {
+    return this.themeStore;
+  }
+
+  getAccessibilityStore(): AccessibilityStore {
+    return this.accessibilityStore;
   }
 
   render(): UiNode {
@@ -91,6 +154,10 @@ export class AppShellController {
         mainViewNode = DisplaysView({
           displayStore: this.displayStore,
           catalogStore: this.catalogStore,
+        });
+      } else if (routerState.activeRoute === 'settings') {
+        mainViewNode = SettingsView({
+          settingsStore: this.settingsStore,
         });
       } else {
         mainViewNode = DashboardView({
@@ -122,6 +189,9 @@ export class AppShellController {
       });
     }
 
+    const themeState = this.themeStore.getState();
+    const a11yState = this.accessibilityStore.getState();
+
     return h(
       'div',
       {
@@ -129,6 +199,10 @@ export class AppShellController {
           'data-testid': 'kinetiwall-app-shell',
           'data-active-route': routerState.activeRoute,
           'data-viewport-width': String(routerState.viewportWidthPx),
+          'data-theme': themeState.effectiveTheme,
+          'data-theme-preference': themeState.preference,
+          'data-reduced-motion': a11yState.effectiveReducedMotion ? 'true' : 'false',
+          'data-motion-preference': a11yState.reducedMotionPreference,
           class: 'kw-shell',
         },
       },

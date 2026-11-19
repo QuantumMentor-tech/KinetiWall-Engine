@@ -41,8 +41,7 @@ export const NAVIGATION_ROUTES: readonly NavigationRouteDefinition[] = [
     label: 'Settings',
     shortDescription: 'Performance, power policies, and application preferences',
     iconName: 'sliders',
-    isAvailable: false,
-    unavailableReason: 'Application settings UI is scheduled for a later roadmap step.',
+    isAvailable: true,
   },
 ] as const;
 

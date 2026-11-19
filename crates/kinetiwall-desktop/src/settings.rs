@@ -58,6 +58,16 @@ pub enum ThemePreference {
     Light,
 }
 
+/// Accessible reduced motion preference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ReducedMotionPreference {
+    #[default]
+    System,
+    AlwaysReduce,
+    NoPreference,
+}
+
 /// Action to take when a foreground application enters fullscreen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -115,6 +125,8 @@ pub struct GeneralConfig {
     pub start_minimized: bool,
     pub minimize_to_tray: bool,
     pub theme: ThemePreference,
+    #[serde(default)]
+    pub reduced_motion: ReducedMotionPreference,
     pub language: String,
 }
 
@@ -125,6 +137,7 @@ impl Default for GeneralConfig {
             start_minimized: true,
             minimize_to_tray: true,
             theme: ThemePreference::System,
+            reduced_motion: ReducedMotionPreference::System,
             language: "en-US".to_string(),
         }
     }
