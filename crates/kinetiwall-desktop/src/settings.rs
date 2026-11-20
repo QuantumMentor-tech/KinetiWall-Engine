@@ -68,6 +68,16 @@ pub enum ReducedMotionPreference {
     NoPreference,
 }
 
+/// In-app notification display preference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationPreference {
+    #[default]
+    All,
+    ErrorsOnly,
+    Disabled,
+}
+
 /// Action to take when a foreground application enters fullscreen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -127,6 +137,8 @@ pub struct GeneralConfig {
     pub theme: ThemePreference,
     #[serde(default)]
     pub reduced_motion: ReducedMotionPreference,
+    #[serde(default)]
+    pub notifications: NotificationPreference,
     pub language: String,
 }
 
@@ -138,6 +150,7 @@ impl Default for GeneralConfig {
             minimize_to_tray: true,
             theme: ThemePreference::System,
             reduced_motion: ReducedMotionPreference::System,
+            notifications: NotificationPreference::All,
             language: "en-US".to_string(),
         }
     }

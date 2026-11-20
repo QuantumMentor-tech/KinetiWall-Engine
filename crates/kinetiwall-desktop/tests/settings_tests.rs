@@ -8,8 +8,9 @@ use uuid::Uuid;
 use kinetiwall_desktop::settings::{
     migrate_raw, BatteryAction, FileSettingsRepository, FullscreenAction,
     InMemorySettingsRepository, KinetiWallConfig, MonitorAssignmentConfig,
-    ReducedMotionPreference, RemoteDesktopAction, SettingsError, SettingsRepository,
-    StretchMode, ThemePreference, BACKUP_CONFIG_EXTENSION, CURRENT_CONFIG_SCHEMA_VERSION,
+    NotificationPreference, ReducedMotionPreference, RemoteDesktopAction, SettingsError,
+    SettingsRepository, StretchMode, ThemePreference, BACKUP_CONFIG_EXTENSION,
+    CURRENT_CONFIG_SCHEMA_VERSION,
 };
 
 fn create_temp_store_path(test_name: &str) -> PathBuf {
@@ -25,6 +26,7 @@ fn test_default_config_is_valid() {
     assert_eq!(config.schema_version, CURRENT_CONFIG_SCHEMA_VERSION);
     assert_eq!(config.general.theme, ThemePreference::System);
     assert_eq!(config.general.reduced_motion, ReducedMotionPreference::System);
+    assert_eq!(config.general.notifications, NotificationPreference::All);
     assert_eq!(config.general.language, "en-US");
     assert_eq!(config.performance.on_fullscreen_app, FullscreenAction::Pause);
     assert_eq!(config.performance.on_battery_power, BatteryAction::Throttle30fps);
@@ -430,6 +432,35 @@ fn test_in_memory_repository() {
     let defaulted = repo.restore_defaults().unwrap();
     assert_eq!(defaulted.general.theme, ThemePreference::System);
     assert_eq!(defaulted.general.reduced_motion, ReducedMotionPreference::System);
+    assert_eq!(defaulted.general.notifications, NotificationPreference::All);
+}
+
+#[test]
+fn test_notification_preference_backward_compatibility_and_modes() {
+    // 1. JSON without `notifications` field should default to `All`
+    let legacy_general_json = r#"{
+        "autostart": false,
+        "start_minimized": true,
+        "minimize_to_tray": true,
+        "theme": "dark",
+        "language": "en-US"
+    }"#;
+    let parsed: kinetiwall_desktop::settings::GeneralConfig =
+        serde_json::from_str(legacy_general_json).expect("Should deserialize legacy JSON");
+    assert_eq!(parsed.notifications, NotificationPreference::All);
+    assert_eq!(parsed.reduced_motion, ReducedMotionPreference::System);
+
+    // 2. Serialization and deserialization of each mode
+    for (mode, mode_str) in [
+        (NotificationPreference::All, "all"),
+        (NotificationPreference::ErrorsOnly, "errors_only"),
+        (NotificationPreference::Disabled, "disabled"),
+    ] {
+        let serialized = serde_json::to_string(&mode).unwrap();
+        assert_eq!(serialized, format!("\"{}\"", mode_str));
+        let deserialized: NotificationPreference = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, mode);
+    }
 }
 
 #[test]

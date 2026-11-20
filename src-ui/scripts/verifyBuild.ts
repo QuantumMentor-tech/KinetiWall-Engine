@@ -116,7 +116,35 @@ async function main(): Promise<void> {
   assert.ok(settingsHtml.includes('data-reduced-motion="false"'));
   assert.ok(settingsHtml.includes('Reduced Motion &amp; Animations') || settingsHtml.includes('Reduced Motion & Animations'));
 
-  console.log('verifyBuild: OK (All src-ui modules, multi-monitor displays, settings, themes, tokens, accessibility, and SSR/DOM contracts verified)');
+  // Keyboard Shortcuts Architecture & Command Registry verification (Step 64)
+  const registry = shell.getCommandRegistry();
+  assert.ok(registry.getCommand('nav.dashboard'));
+  assert.ok(registry.getCommand('nav.library'));
+  assert.ok(registry.getCommand('nav.displays'));
+  assert.ok(registry.getCommand('nav.settings'));
+  assert.ok(registry.getCommand('library.search_focus'));
+  assert.ok(registry.getCommand('help.shortcuts'));
+
+  assert.ok(settingsHtml.includes('Alt+1'));
+  assert.ok(settingsHtml.includes('data-testid="nav-shortcuts-btn"'));
+
+  shell.openShortcutsModal();
+  const shortcutsModalHtml = renderToHtml(shell.render());
+  assert.ok(shortcutsModalHtml.includes('data-testid="shortcuts-modal-dialog"'));
+  assert.ok(shortcutsModalHtml.includes('Keyboard Shortcuts'));
+  shell.closeShortcutsModal();
+
+  // In-App Notification Architecture & Toast Lifecycle verification (Step 65)
+  assert.ok(settingsHtml.includes('In-App Notifications'));
+  const notifStore = shell.getNotificationStore();
+  notifStore.success('Engine operational', { title: 'Online' });
+  const notifHtml = renderToHtml(shell.render());
+  assert.ok(notifHtml.includes('data-testid="toast-container"'));
+  assert.ok(notifHtml.includes('Engine operational'));
+  assert.ok(notifHtml.includes('Online'));
+  notifStore.dismissAll();
+
+  console.log('verifyBuild: OK (All src-ui modules, multi-monitor displays, settings, themes, tokens, accessibility, keyboard shortcuts, notifications, and SSR/DOM contracts verified)');
 }
 
 await main();

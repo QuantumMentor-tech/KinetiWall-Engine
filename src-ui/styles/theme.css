@@ -1219,4 +1219,247 @@ select:focus-visible,
   }
 }
 
+/* ==========================================================================
+   Keyboard Shortcuts Modal & Kbd Elements (Step 64)
+   ========================================================================== */
+
+.kw-shortcuts-modal {
+  max-width: 620px;
+  max-height: 85vh;
+}
+
+.kw-shortcuts-list-container {
+  padding: 16px 22px;
+  overflow-y: auto;
+  max-height: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.kw-shortcuts-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kw-shortcuts-section-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--kw-accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.kw-shortcuts-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background-color: var(--kw-bg-elevated);
+  border: 1px solid var(--kw-border-subtle);
+  border-radius: var(--kw-radius-md);
+  padding: 8px 12px;
+}
+
+.kw-shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--kw-border-subtle);
+}
+
+.kw-shortcut-row:last-child {
+  border-bottom: none;
+}
+
+.kw-shortcut-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kw-shortcut-label {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--kw-text-primary);
+}
+
+.kw-shortcut-desc {
+  font-size: 0.78rem;
+  color: var(--kw-text-muted);
+}
+
+.kw-shortcut-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kw-kbd-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kw-kbd {
+  display: inline-block;
+  padding: 2px 7px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--kw-text-primary);
+  background-color: var(--kw-bg-input);
+  border: 1px solid var(--kw-border-default);
+  border-radius: 4px;
+  box-shadow: 0 1px 0 var(--kw-border-default);
+  white-space: nowrap;
+}
+
+.kw-kbd-plus {
+  font-size: 0.75rem;
+  color: var(--kw-text-muted);
+}
+
+.kw-nav-shortcut-hint {
+  font-size: 0.7rem;
+  color: var(--kw-text-muted);
+  margin-left: auto;
+  padding-left: 6px;
+  opacity: 0.8;
+}
+
+.kw-nav-btn:hover .kw-nav-shortcut-hint,
+.kw-nav-btn-active .kw-nav-shortcut-hint {
+  color: var(--kw-text-secondary);
+  opacity: 1;
+}
+
+.kw-shortcuts-footer-btn {
+  margin-top: auto;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--kw-border-subtle);
+  color: var(--kw-text-secondary);
+  font-size: 0.82rem;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  border-radius: 0;
+  transition: background-color var(--kw-transition-fast), color var(--kw-transition-fast);
+}
+
+.kw-shortcuts-footer-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--kw-text-primary);
+}
+
+/* ==========================================================================
+   In-App Notifications & Toasts (Step 65)
+   ========================================================================== */
+
+.kw-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 3000;
+  max-width: 420px;
+  width: calc(100% - 48px);
+  pointer-events: none;
+}
+
+.kw-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--kw-radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  background-color: var(--kw-bg-elevated);
+  border: 1px solid var(--kw-border-default);
+  transition: opacity var(--kw-transition-normal), transform var(--kw-transition-normal);
+}
+
+.kw-toast-success {
+  border-left: 4px solid var(--kw-status-available);
+}
+
+.kw-toast-error {
+  border-left: 4px solid var(--kw-status-error);
+}
+
+.kw-toast-warning {
+  border-left: 4px solid var(--kw-status-warning);
+}
+
+.kw-toast-info {
+  border-left: 4px solid var(--kw-accent-cyan);
+}
+
+.kw-toast-icon {
+  font-size: 1.1rem;
+  font-weight: bold;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.kw-toast-icon-success {
+  color: var(--kw-status-available);
+}
+
+.kw-toast-icon-error {
+  color: var(--kw-status-error);
+}
+
+.kw-toast-icon-warning {
+  color: var(--kw-status-warning);
+}
+
+.kw-toast-icon-info {
+  color: var(--kw-accent-cyan);
+}
+
+.kw-toast-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.kw-toast-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--kw-text-primary);
+}
+
+.kw-toast-message {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--kw-text-secondary);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.kw-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+
+
 

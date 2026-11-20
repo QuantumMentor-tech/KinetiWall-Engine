@@ -8,6 +8,7 @@ import { Badge, Button } from '../primitives/controls.ts';
 import { h, type UiNode } from '../primitives/uiNode.ts';
 import type { CatalogEntrySummary } from '../../types/catalog.ts';
 import type { DisplayDescriptorDto } from '../../types/display.ts';
+import { trapFocus } from '../../utils/focusManager.ts';
 
 export interface WallpaperPickerModalProps {
   isOpen: boolean;
@@ -51,6 +52,14 @@ export function WallpaperPickerModal(props: WallpaperPickerModalProps): UiNode |
           role: 'dialog',
           'aria-modal': 'true',
           'aria-labelledby': 'wallpaper-picker-title',
+        },
+        onKeyDown: (e) => {
+          if (e.key === 'Escape' && !isAssigning) {
+            e.preventDefault?.();
+            onClose();
+          } else if (e.key === 'Tab' && e.currentTarget instanceof HTMLElement) {
+            trapFocus(e.currentTarget, e);
+          }
         },
       },
       // Modal Header

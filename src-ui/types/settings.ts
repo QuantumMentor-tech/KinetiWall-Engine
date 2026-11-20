@@ -8,6 +8,8 @@ export type ThemePreferenceDto = 'system' | 'dark' | 'light';
 
 export type ReducedMotionPreferenceDto = 'system' | 'always_reduce' | 'no_preference';
 
+export type NotificationPreferenceDto = 'all' | 'errors_only' | 'disabled';
+
 export type FullscreenActionDto = 'pause' | 'mute' | 'keep_playing';
 
 export type WindowStateActionDto = 'pause' | 'mute' | 'keep_playing';
@@ -26,6 +28,7 @@ export interface GeneralConfigDto {
   minimize_to_tray: boolean;
   theme: ThemePreferenceDto;
   reduced_motion: ReducedMotionPreferenceDto;
+  notifications: NotificationPreferenceDto;
   language: string;
 }
 
@@ -90,6 +93,7 @@ export function createDefaultConfigDto(): KinetiWallConfigDto {
       minimize_to_tray: true,
       theme: 'system',
       reduced_motion: 'system',
+      notifications: 'all',
       language: 'en-US',
     },
     performance: {
@@ -142,6 +146,11 @@ export function validateSettings(config: KinetiWallConfigDto): Record<string, st
   const validReducedMotion = ['system', 'always_reduce', 'no_preference'];
   if (config.general.reduced_motion && !validReducedMotion.includes(config.general.reduced_motion)) {
     errors['general.reduced_motion'] = `Reduced motion must be one of: ${validReducedMotion.join(', ')}`;
+  }
+
+  const validNotifications = ['all', 'errors_only', 'disabled'];
+  if (config.general.notifications && !validNotifications.includes(config.general.notifications)) {
+    errors['general.notifications'] = `Notification mode must be one of: ${validNotifications.join(', ')}`;
   }
 
   if (
@@ -219,6 +228,7 @@ export function getDirtyFields(
   if (draft.general.minimize_to_tray !== persisted.general.minimize_to_tray) dirty.push('general.minimize_to_tray');
   if (draft.general.theme !== persisted.general.theme) dirty.push('general.theme');
   if (draft.general.reduced_motion !== persisted.general.reduced_motion) dirty.push('general.reduced_motion');
+  if (draft.general.notifications !== persisted.general.notifications) dirty.push('general.notifications');
   if (draft.general.language !== persisted.general.language) dirty.push('general.language');
 
   // Performance

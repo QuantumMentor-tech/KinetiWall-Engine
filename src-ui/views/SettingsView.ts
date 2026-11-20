@@ -19,6 +19,7 @@ import type {
   BatteryActionDto,
   FullscreenActionDto,
   LogLevelDto,
+  NotificationPreferenceDto,
   ReducedMotionPreferenceDto,
   RemoteDesktopActionDto,
   SettingsTab,
@@ -292,6 +293,21 @@ function renderTabContent(
             ],
             onSelect: (val) =>
               store.updateDraftField('general', 'reduced_motion', val as ReducedMotionPreferenceDto),
+          }),
+          PreferenceSegmentedGroup({
+            testId: 'pref-notifications',
+            label: 'In-App Notifications',
+            description:
+              'Control transient notifications for completed operations and system updates',
+            value: draft.general.notifications ?? 'all',
+            dirty: state.dirtyFields.includes('general.notifications'),
+            options: [
+              { value: 'all', label: 'All Notifications', testId: 'notif-all' },
+              { value: 'errors_only', label: 'Errors & Warnings', testId: 'notif-errors' },
+              { value: 'disabled', label: 'Critical Only', testId: 'notif-disabled' },
+            ],
+            onSelect: (val) =>
+              store.updateDraftField('general', 'notifications', val as NotificationPreferenceDto),
           }),
           PreferenceSelect({
             id: 'pref-language',

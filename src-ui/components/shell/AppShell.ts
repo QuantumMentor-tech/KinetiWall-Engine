@@ -11,12 +11,17 @@ import { h, type UiNode } from '../primitives/uiNode.ts';
 import { NAVIGATION_ROUTES, type RouteId } from '../../routes.ts';
 import { DisplayIpcClient, createMockDisplayIpcTransport } from '../../services/displayIpcClient.ts';
 import { SettingsIpcClient, createMockSettingsIpcTransport } from '../../services/settingsIpcClient.ts';
+import { CommandRegistry } from '../../services/commandRegistry.ts';
 import type { CatalogStore } from '../../stores/catalogStore.ts';
 import { DisplayStore } from '../../stores/displayStore.ts';
 import type { RouterStore } from '../../stores/routerStore.ts';
 import { SettingsStore } from '../../stores/settingsStore.ts';
 import { ThemeStore } from '../../stores/themeStore.ts';
 import { AccessibilityStore } from '../../stores/accessibilityStore.ts';
+import { NotificationStore } from '../../stores/notificationStore.ts';
+import { announce } from '../../utils/announcer.ts';
+import { KeyboardShortcutsModal } from '../domain/KeyboardShortcutsModal.ts';
+import { ToastContainer } from '../domain/ToastContainer.ts';
 import { DashboardView } from '../../views/DashboardView.ts';
 import { DisplaysView } from '../../views/DisplaysView.ts';
 import { LibraryView } from '../../views/LibraryView.ts';
@@ -29,6 +34,8 @@ export interface AppShellProps {
   settingsStore?: SettingsStore;
   themeStore?: ThemeStore;
   accessibilityStore?: AccessibilityStore;
+  commandRegistry?: CommandRegistry;
+  notificationStore?: NotificationStore;
 }
 
 export class AppShellController {
@@ -38,6 +45,9 @@ export class AppShellController {
   private readonly settingsStore: SettingsStore;
   private readonly themeStore: ThemeStore;
   private readonly accessibilityStore: AccessibilityStore;
+  private readonly commandRegistry: CommandRegistry;
+  private readonly notificationStore: NotificationStore;
+  private isShortcutsModalOpen = false;
   private viewError: string | null = null;
 
   constructor(props: AppShellProps) {
@@ -49,23 +59,39 @@ export class AppShellController {
       props.settingsStore ?? new SettingsStore(new SettingsIpcClient(createMockSettingsIpcTransport()));
     this.themeStore = props.themeStore ?? new ThemeStore();
     this.accessibilityStore = props.accessibilityStore ?? new AccessibilityStore();
+    this.notificationStore = props.notificationStore ?? new NotificationStore();
+    this.commandRegistry =
+      props.commandRegistry ??
+      new CommandRegistry(() => ({
+        activeRoute: this.routerStore.getState().activeRoute,
+        isModalOpen: this.isShortcutsModalOpen,
+      }));
+
+    this.registerDefaultCommands();
+
+    // Attach event listener in DOM environments
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      this.commandRegistry.attach(window);
+    }
 
     // Synchronize initial preferences if settings already loaded
     const initialSettings = this.settingsStore.getState().persistedConfig;
     if (initialSettings) {
       this.themeStore.syncWithSettings(initialSettings);
       this.accessibilityStore.syncWithSettings(initialSettings);
+      this.notificationStore.syncWithSettings(initialSettings);
     }
 
     // Apply initial DOM attributes
     this.themeStore.applyToDom();
     this.accessibilityStore.applyToDom();
 
-    // Subscribe to settings changes to synchronize theme and accessibility
+    // Subscribe to settings changes to synchronize theme, accessibility, and notifications
     this.settingsStore.subscribe((settingsState) => {
       if (settingsState.persistedConfig) {
         this.themeStore.syncWithSettings(settingsState.persistedConfig);
         this.accessibilityStore.syncWithSettings(settingsState.persistedConfig);
+        this.notificationStore.syncWithSettings(settingsState.persistedConfig);
       }
       if (settingsState.draftConfig) {
         if (settingsState.draftConfig.general.theme) {
@@ -73,6 +99,9 @@ export class AppShellController {
         }
         if (settingsState.draftConfig.general.reduced_motion) {
           this.accessibilityStore.setPreference(settingsState.draftConfig.general.reduced_motion);
+        }
+        if (settingsState.draftConfig.general.notifications) {
+          this.notificationStore.setPreference(settingsState.draftConfig.general.notifications);
         }
       }
     });
@@ -133,6 +162,209 @@ export class AppShellController {
 
   getAccessibilityStore(): AccessibilityStore {
     return this.accessibilityStore;
+  }
+
+  getCommandRegistry(): CommandRegistry {
+    return this.commandRegistry;
+  }
+
+  getNotificationStore(): NotificationStore {
+    return this.notificationStore;
+  }
+
+  openShortcutsModal(): void {
+    this.isShortcutsModalOpen = true;
+  }
+
+  closeShortcutsModal(): void {
+    this.isShortcutsModalOpen = false;
+  }
+
+  isShortcutsOpen(): boolean {
+    return this.isShortcutsModalOpen;
+  }
+
+  dispose(): void {
+    this.commandRegistry.detach();
+    this.notificationStore.dispose();
+  }
+
+  private registerDefaultCommands(): void {
+    // 1. Navigation Commands
+    this.commandRegistry.registerCommand({
+      id: 'nav.dashboard',
+      label: 'Go to Dashboard',
+      description: 'Navigate to Engine Overview and status dashboard',
+      category: 'navigation',
+      defaultShortcut: { key: '1', code: 'Digit1', alt: true },
+      action: () => {
+        this.navigate('dashboard');
+        announce('Navigated to Dashboard');
+      },
+    });
+
+    this.commandRegistry.registerCommand({
+      id: 'nav.library',
+      label: 'Go to Wallpaper Library',
+      description: 'Browse registered wallpapers and inspect asset availability',
+      category: 'navigation',
+      defaultShortcut: { key: '2', code: 'Digit2', alt: true },
+      action: () => {
+        this.navigate('library');
+        announce('Navigated to Wallpaper Library');
+      },
+    });
+
+    this.commandRegistry.registerCommand({
+      id: 'nav.displays',
+      label: 'Go to Displays',
+      description: 'Manage multi-monitor layouts and wallpaper assignments',
+      category: 'navigation',
+      defaultShortcut: { key: '3', code: 'Digit3', alt: true },
+      action: () => {
+        this.navigate('displays');
+        announce('Navigated to Displays & Layout');
+      },
+    });
+
+    this.commandRegistry.registerCommand({
+      id: 'nav.settings',
+      label: 'Go to Settings',
+      description: 'Configure engine behavior, power policies, and preferences',
+      category: 'navigation',
+      defaultShortcut: { key: '4', code: 'Digit4', alt: true },
+      action: () => {
+        this.navigate('settings');
+        announce('Navigated to Application Settings');
+      },
+    });
+
+    // 2. Library & Search Commands
+    this.commandRegistry.registerCommand({
+      id: 'library.search_focus',
+      label: 'Focus Library Search',
+      description: 'Focus the search query input in wallpaper library',
+      category: 'library',
+      defaultShortcut: { key: 'f', code: 'KeyF', ctrl: true },
+      action: () => {
+        if (this.routerStore.getState().activeRoute !== 'library') {
+          this.navigate('library');
+        }
+        if (typeof document !== 'undefined') {
+          const input = (document.getElementById('library-search-field') ??
+            document.getElementById('library-search-input')) as HTMLInputElement | null;
+          input?.focus();
+          input?.select();
+        }
+      },
+    });
+
+    this.commandRegistry.registerCommand({
+      id: 'library.refresh',
+      label: 'Refresh Wallpaper Library',
+      description: 'Reload local catalog records and re-verify asset availability',
+      category: 'library',
+      scope: 'library',
+      defaultShortcut: { key: 'F5' },
+      action: () => {
+        void this.catalogStore.loadCatalog();
+        announce('Refreshing wallpaper catalog');
+      },
+    });
+
+    // 3. Displays Commands
+    this.commandRegistry.registerCommand({
+      id: 'displays.refresh',
+      label: 'Refresh Display Topology',
+      description: 'Re-discover connected monitors and update layout bounds',
+      category: 'displays',
+      scope: 'displays',
+      defaultShortcut: { key: 'r', code: 'KeyR', ctrl: true, shift: true },
+      action: () => {
+        void this.displayStore.refreshTopology();
+        announce('Refreshing display topology');
+      },
+    });
+
+    // 4. Settings Commands
+    this.commandRegistry.registerCommand({
+      id: 'settings.save',
+      label: 'Save Settings Changes',
+      description: 'Persist modified preference draft to disk',
+      category: 'settings',
+      scope: 'settings',
+      defaultShortcut: { key: 's', code: 'KeyS', ctrl: true },
+      isEnabled: () => this.settingsStore.getState().isDirty,
+      action: async () => {
+        const ok = await this.settingsStore.saveChanges();
+        if (ok) {
+          this.notificationStore.success('Application preferences saved to disk.', {
+            title: 'Settings Saved',
+            reasonCode: 'settings.saved',
+          });
+        } else {
+          this.notificationStore.error('Failed to save settings. Please inspect validation errors.', {
+            title: 'Save Failed',
+            reasonCode: 'settings.save_failed',
+          });
+        }
+      },
+    });
+
+    this.commandRegistry.registerCommand({
+      id: 'settings.discard',
+      label: 'Discard Settings Draft',
+      description: 'Revert uncommitted preference changes to last saved state',
+      category: 'settings',
+      scope: 'settings',
+      defaultShortcut: { key: 'z', code: 'KeyZ', ctrl: true, shift: true },
+      isEnabled: () => this.settingsStore.getState().isDirty,
+      action: () => {
+        this.settingsStore.discardChanges();
+        this.notificationStore.info('Unsaved preference changes discarded.', {
+          title: 'Changes Discarded',
+          reasonCode: 'settings.discarded',
+        });
+      },
+    });
+
+    // 5. General & Help Commands
+    this.commandRegistry.registerCommand({
+      id: 'help.shortcuts',
+      label: 'Show Keyboard Shortcuts',
+      description: 'Open the keyboard shortcuts reference dialog',
+      category: 'general',
+      defaultShortcut: { key: '?' },
+      action: () => {
+        this.openShortcutsModal();
+      },
+    });
+
+    this.commandRegistry.registerCommand({
+      id: 'help.shortcuts_f1',
+      label: 'Show Keyboard Shortcuts (F1)',
+      description: 'Open the keyboard shortcuts reference dialog',
+      category: 'general',
+      defaultShortcut: { key: 'F1' },
+      action: () => {
+        this.openShortcutsModal();
+      },
+    });
+
+    this.commandRegistry.registerCommand({
+      id: 'dialog.close',
+      label: 'Close Dialog / Panel',
+      description: 'Dismiss the active modal dialog or inspector panel',
+      category: 'general',
+      scope: 'modal',
+      defaultShortcut: { key: 'Escape' },
+      allowInInputs: true,
+      action: () => {
+        if (this.isShortcutsModalOpen) {
+          this.closeShortcutsModal();
+        }
+      },
+    });
   }
 
   render(): UiNode {
@@ -226,9 +458,10 @@ export class AppShellController {
         h(
           'ul',
           { attrs: { class: 'kw-nav-list', role: 'list' } },
-          ...NAVIGATION_ROUTES.map((route) => {
+          ...NAVIGATION_ROUTES.map((route, idx) => {
             const isActive = routerState.activeRoute === route.id;
             const isDisabled = !route.isAvailable;
+            const shortcutHint = `Alt+${idx + 1}`;
             return h(
               'li',
               { key: route.id, attrs: { class: 'kw-nav-item' } },
@@ -248,8 +481,8 @@ export class AppShellController {
                     'aria-current': isActive ? 'page' : undefined,
                     'aria-label': isDisabled
                       ? `${route.label} (Unavailable: ${route.unavailableReason})`
-                      : route.label,
-                    title: isDisabled ? route.unavailableReason : route.shortDescription,
+                      : `${route.label} (${shortcutHint})`,
+                    title: isDisabled ? route.unavailableReason : `${route.shortDescription} (${shortcutHint})`,
                   },
                   onClick: isDisabled
                     ? undefined
@@ -266,9 +499,29 @@ export class AppShellController {
                       },
                 },
                 h('span', { attrs: { class: 'kw-nav-label' } }, route.label),
+                h('span', { attrs: { class: 'kw-nav-shortcut-hint', 'aria-hidden': 'true' } }, shortcutHint),
               ),
             );
           }),
+        ),
+        // Shortcuts Reference Button in Nav Footer
+        h(
+          'button',
+          {
+            attrs: {
+              type: 'button',
+              'data-testid': 'nav-shortcuts-btn',
+              class: 'kw-shortcuts-footer-btn kw-focus-ring',
+              'aria-label': 'Keyboard Shortcuts (press ? or F1)',
+              title: 'Keyboard Shortcuts (press ? or F1)',
+            },
+            onClick: () => {
+              this.openShortcutsModal();
+            },
+          },
+          h('span', { attrs: { 'aria-hidden': 'true' } }, '⌨'),
+          h('span', {}, 'Shortcuts'),
+          h('span', { attrs: { class: 'kw-nav-shortcut-hint', 'aria-hidden': 'true' } }, '?'),
         ),
       ),
       // Main Content Viewport
@@ -283,6 +536,19 @@ export class AppShellController {
         },
         mainViewNode,
       ),
+      // Keyboard Shortcuts Dialog Modal
+      KeyboardShortcutsModal({
+        isOpen: this.isShortcutsModalOpen,
+        registry: this.commandRegistry,
+        onClose: () => {
+          this.closeShortcutsModal();
+        },
+      }),
+      // In-App Notifications Toast Container
+      ToastContainer({
+        notifications: this.notificationStore.getState(),
+        onDismiss: (id) => this.notificationStore.dismiss(id),
+      }),
     );
   }
 }

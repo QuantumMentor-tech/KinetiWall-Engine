@@ -155,8 +155,8 @@ pub use arbitration::{
 pub use settings::{
     migrate_raw, AudioConfig, BatteryAction, DiagnosticsConfig, FileSettingsRepository,
     FullscreenAction, GeneralConfig, InMemorySettingsRepository, KinetiWallConfig,
-    MonitorAssignmentConfig, PerformanceConfig, ReducedMotionPreference, RemoteDesktopAction,
-    RenderingConfig, SettingsError, SettingsRepository, StretchMode, ThemePreference,
-    WindowStateAction, BACKUP_CONFIG_EXTENSION, CURRENT_CONFIG_SCHEMA_VERSION,
+    MonitorAssignmentConfig, NotificationPreference, PerformanceConfig, ReducedMotionPreference,
+    RemoteDesktopAction, RenderingConfig, SettingsError, SettingsRepository, StretchMode,
+    ThemePreference, WindowStateAction, BACKUP_CONFIG_EXTENSION, CURRENT_CONFIG_SCHEMA_VERSION,
     DEFAULT_CONFIG_FILENAME, TEMP_CONFIG_EXTENSION,
 };
