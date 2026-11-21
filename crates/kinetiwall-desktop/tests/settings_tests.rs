@@ -491,4 +491,56 @@ fn test_reduced_motion_backward_compatibility_and_modes() {
     }
 }
 
+#[test]
+fn test_onboarding_record_backward_compatibility_and_validation() {
+    // 1. JSON without `onboarding` field should deserialize with default OnboardingRecord
+    let legacy_general_json = r#"{
+        "autostart": false,
+        "start_minimized": true,
+        "minimize_to_tray": true,
+        "theme": "dark",
+        "language": "en-US"
+    }"#;
+    let parsed: kinetiwall_desktop::settings::GeneralConfig =
+        serde_json::from_str(legacy_general_json).expect("Should deserialize legacy JSON");
+    assert_eq!(parsed.onboarding.status, kinetiwall_desktop::settings::OnboardingStatus::NotStarted);
+    assert_eq!(parsed.onboarding.version, kinetiwall_desktop::settings::CURRENT_ONBOARDING_VERSION);
+    assert_eq!(parsed.onboarding.last_completed_step, None);
+    assert_eq!(parsed.onboarding.completed_at_millis, None);
+
+    // 2. Serialization and deserialization of each status
+    for (status, status_str) in [
+        (kinetiwall_desktop::settings::OnboardingStatus::NotStarted, "not_started"),
+        (kinetiwall_desktop::settings::OnboardingStatus::InProgress, "in_progress"),
+        (kinetiwall_desktop::settings::OnboardingStatus::Completed, "completed"),
+        (kinetiwall_desktop::settings::OnboardingStatus::Dismissed, "dismissed"),
+    ] {
+        let record = kinetiwall_desktop::settings::OnboardingRecord {
+            version: 1,
+            status,
+            last_completed_step: Some("welcome".to_string()),
+            completed_at_millis: Some(1732170000000),
+        };
+        let serialized = serde_json::to_string(&record).unwrap();
+        assert!(serialized.contains(status_str));
+        let deserialized: kinetiwall_desktop::settings::OnboardingRecord =
+            serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, record);
+    }
+
+    // 3. Validation rejects unsupported versions
+    let mut config = KinetiWallConfig::default();
+    config.general.onboarding.version = 0;
+    assert!(matches!(
+        config.validate(),
+        Err(SettingsError::ValidationFailure { setting, .. }) if setting == "general.onboarding.version"
+    ));
+    config.general.onboarding.version = 999;
+    assert!(matches!(
+        config.validate(),
+        Err(SettingsError::ValidationFailure { setting, .. }) if setting == "general.onboarding.version"
+    ));
+}
+
+
 

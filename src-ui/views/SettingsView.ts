@@ -32,6 +32,8 @@ import { announce } from '../utils/announcer.ts';
 export interface SettingsViewProps {
   settingsStore: SettingsStore;
   onFactoryResetRequested?: () => void;
+  onReopenOnboarding?: () => void;
+  onOpenHelp?: (topicId?: string) => void;
 }
 
 export function SettingsView(props: SettingsViewProps): UiNode {
@@ -135,6 +137,22 @@ export function SettingsView(props: SettingsViewProps): UiNode {
           tone: 'cyan',
         }),
         Button({
+          testId: 'settings-help-btn',
+          label: 'Help & Troubleshooting',
+          variant: 'secondary',
+          size: 'sm',
+          onClick: () => {
+            const topicMap: Record<SettingsTab, string> = {
+              general: 'help-settings-preferences',
+              playback: 'help-playback-policies',
+              rendering: 'ts-video-codec',
+              audio: 'help-audio-reactivity',
+              diagnostics: 'ts-unknown-issue',
+            };
+            props.onOpenHelp?.(topicMap[state.activeTab] ?? 'help-settings-preferences');
+          },
+        }),
+        Button({
           testId: 'settings-reset-all-btn',
           label: 'Reset All to Defaults',
           variant: 'ghost',
@@ -195,7 +213,7 @@ export function SettingsView(props: SettingsViewProps): UiNode {
           class: 'kw-settings-tab-content',
         },
       },
-      renderTabContent(state.activeTab, draft, state, settingsStore),
+      renderTabContent(state.activeTab, draft, state, settingsStore, props.onReopenOnboarding),
     ),
 
     // Sticky Bottom Save Status Bar
@@ -229,6 +247,7 @@ function renderTabContent(
   draft: NonNullable<ReturnType<SettingsStore['getState']>['draftConfig']>,
   state: ReturnType<SettingsStore['getState']>,
   store: SettingsStore,
+  onReopenOnboarding?: () => void,
 ): UiNode {
   switch (tab) {
     case 'general':
@@ -326,6 +345,31 @@ function renderTabContent(
             ],
             onChange: (val) => store.updateDraftField('general', 'language', val),
           }),
+          h(
+            'div',
+            { attrs: { class: 'kw-preference-item kw-preference-onboarding', 'data-testid': 'pref-onboarding-item' } },
+            h(
+              'div',
+              { attrs: { class: 'kw-pref-info' } },
+              h('div', { attrs: { class: 'kw-pref-label' } }, 'Guided Onboarding & System Readiness'),
+              h(
+                'div',
+                { attrs: { class: 'kw-pref-desc' } },
+                `Tour status: ${draft.general.onboarding?.status ?? 'not_started'}. Revisit system capability readiness checks, library discovery, and core setup workflows.`,
+              ),
+            ),
+            h(
+              'div',
+              { attrs: { class: 'kw-pref-control' } },
+              Button({
+                testId: 'settings-reopen-onboarding-btn',
+                label: 'Launch Guided Tour',
+                variant: 'secondary',
+                size: 'sm',
+                onClick: onReopenOnboarding,
+              }),
+            ),
+          ),
         ],
       });
 

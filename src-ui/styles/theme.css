@@ -1460,6 +1460,542 @@ select:focus-visible,
   margin-left: 8px;
 }
 
+/* =============================================================================
+   First-Run Experience, Guided Onboarding & Readiness (Step 66)
+   ============================================================================= */
+
+.kw-onboarding-modal {
+  max-width: 680px;
+  width: 92%;
+  max-height: 85vh;
+}
+
+.kw-onboarding-step-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--kw-accent-cyan);
+  margin-bottom: 4px;
+}
+
+.kw-onboarding-progress-bar {
+  display: flex;
+  height: 4px;
+  width: 100%;
+  background-color: var(--kw-border-subtle);
+  overflow: hidden;
+}
+
+.kw-onboarding-progress-segment {
+  flex: 1;
+  background-color: transparent;
+  transition: background-color var(--kw-transition-fast);
+}
+
+.kw-onboarding-progress-segment.kw-progress-segment-completed {
+  background-color: var(--kw-accent-cyan);
+  opacity: 0.5;
+}
+
+.kw-onboarding-progress-segment.kw-progress-segment-active {
+  background-color: var(--kw-accent-cyan);
+  opacity: 1;
+}
+
+.kw-onboarding-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 280px;
+}
+
+.kw-onboarding-stage-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Stage 1: Welcome */
+.kw-onboarding-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background-color: rgba(0, 240, 255, 0.05);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: var(--kw-radius-md);
+  padding: 16px;
+}
+
+.kw-onboarding-hero-icon {
+  font-size: 1.5rem;
+  color: var(--kw-accent-cyan);
+  flex-shrink: 0;
+}
+
+.kw-onboarding-hero-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--kw-text-primary);
+}
+
+.kw-onboarding-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.kw-onboarding-feature-card {
+  background-color: var(--kw-bg-input);
+  border: 1px solid var(--kw-border-subtle);
+  border-radius: var(--kw-radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kw-onboarding-feature-icon {
+  font-size: 1.25rem;
+}
+
+.kw-onboarding-feature-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--kw-text-primary);
+}
+
+.kw-onboarding-feature-copy {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--kw-text-secondary);
+}
+
+/* Stage 2: Readiness */
+.kw-onboarding-readiness-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kw-onboarding-readiness-intro {
+  flex: 1;
+}
+
+.kw-readiness-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kw-readiness-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background-color: var(--kw-bg-input);
+  border: 1px solid var(--kw-border-subtle);
+  border-radius: var(--kw-radius-md);
+  padding: 10px 14px;
+}
+
+.kw-readiness-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.kw-readiness-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kw-readiness-item-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--kw-text-primary);
+}
+
+.kw-readiness-item-detail {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--kw-text-secondary);
+  line-height: 1.35;
+}
+
+.kw-readiness-item-remediation {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--kw-accent-cyan);
+  font-style: italic;
+}
+
+.kw-readiness-summary-card {
+  background-color: rgba(0, 240, 255, 0.04);
+  border: 1px solid var(--kw-border-subtle);
+  border-radius: var(--kw-radius-md);
+  padding: 12px 16px;
+  text-align: center;
+}
+
+.kw-readiness-summary-text {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--kw-text-primary);
+}
+
+/* Stage 3: Workflows */
+.kw-workflow-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kw-workflow-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background-color: var(--kw-bg-input);
+  border: 1px solid var(--kw-border-subtle);
+  border-radius: var(--kw-radius-md);
+  padding: 14px;
+}
+
+.kw-workflow-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: var(--kw-accent-cyan);
+  color: #0A0B10;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.kw-workflow-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.kw-workflow-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--kw-text-primary);
+}
+
+.kw-workflow-copy {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--kw-text-secondary);
+}
+
+/* Stage 4: Completion */
+.kw-onboarding-completion-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 16px 0;
+  gap: 8px;
+}
+
+.kw-onboarding-completion-icon {
+  font-size: 2.5rem;
+}
+
+.kw-onboarding-completion-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--kw-text-primary);
+}
+
+.kw-onboarding-completion-text {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--kw-text-secondary);
+  max-width: 520px;
+}
+
+.kw-onboarding-tips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background-color: var(--kw-bg-input);
+  border: 1px solid var(--kw-border-subtle);
+  border-radius: var(--kw-radius-md);
+  padding: 14px 18px;
+}
+
+.kw-onboarding-tip-item {
+  font-size: 0.8rem;
+  color: var(--kw-text-secondary);
+  line-height: 1.4;
+}
+
+/* Footer layout */
+.kw-onboarding-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kw-onboarding-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kw-onboarding-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kw-preference-onboarding {
+  border-top: 1px solid var(--kw-border-subtle);
+  padding-top: 14px;
+  margin-top: 8px;
+}
+
+/* =============================================================================
+   In-App Help, Contextual Guidance & Troubleshooting (Step 67)
+   ============================================================================= */
+
+.kw-help-modal {
+  max-width: 880px;
+  width: 95%;
+  max-height: 85vh;
+}
+
+.kw-help-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--kw-border-subtle);
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.kw-help-category-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.kw-help-cat-pill {
+  background-color: var(--kw-bg-input);
+  border: 1px solid var(--kw-border-subtle);
+  border-radius: var(--kw-radius-full);
+  color: var(--kw-text-secondary);
+  font-size: 0.76rem;
+  font-weight: 500;
+  padding: 4px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--kw-transition-fast);
+}
+
+.kw-help-cat-pill:hover {
+  border-color: var(--kw-border-focus);
+  color: var(--kw-text-primary);
+}
+
+.kw-help-cat-pill.kw-cat-pill-active {
+  background-color: rgba(0, 240, 255, 0.12);
+  border-color: var(--kw-accent-cyan);
+  color: var(--kw-accent-cyan);
+  font-weight: 600;
+}
+
+.kw-help-split-body {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  flex: 1;
+  overflow: hidden;
+  min-height: 380px;
+  max-height: 520px;
+}
+
+.kw-help-topic-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  overflow-y: auto;
+  border-right: 1px solid var(--kw-border-subtle);
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.kw-help-topic-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: 10px 12px;
+  background-color: var(--kw-bg-input);
+  border: 1px solid var(--kw-border-subtle);
+  border-radius: var(--kw-radius-md);
+  cursor: pointer;
+  transition: all var(--kw-transition-fast);
+}
+
+.kw-help-topic-item:hover {
+  border-color: var(--kw-border-focus);
+}
+
+.kw-help-topic-item-active {
+  border-color: var(--kw-accent-cyan);
+  background-color: rgba(0, 240, 255, 0.08);
+}
+
+.kw-help-topic-item-ts {
+  border-left: 3px solid var(--kw-status-warning);
+}
+
+.kw-help-topic-item-active.kw-help-topic-item-ts {
+  border-left: 3px solid var(--kw-accent-cyan);
+}
+
+.kw-topic-item-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--kw-text-primary);
+}
+
+.kw-topic-item-summary {
+  font-size: 0.74rem;
+  color: var(--kw-text-secondary);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.kw-help-empty-search {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--kw-text-muted);
+  gap: 8px;
+}
+
+.kw-help-topic-detail {
+  padding: 20px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.kw-topic-detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-bottom: 1px solid var(--kw-border-subtle);
+  padding-bottom: 14px;
+}
+
+.kw-topic-detail-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--kw-text-primary);
+}
+
+.kw-topic-detail-summary {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--kw-text-secondary);
+  line-height: 1.45;
+}
+
+.kw-topic-detail-paragraphs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kw-topic-paragraph {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--kw-text-primary);
+}
+
+/* Troubleshooting Breakdown Box */
+.kw-troubleshooting-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background-color: var(--kw-bg-input);
+  border: 1px solid var(--kw-border-subtle);
+  border-left: 4px solid var(--kw-status-warning);
+  border-radius: var(--kw-radius-md);
+  padding: 16px;
+}
+
+.kw-ts-section {
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.kw-ts-label {
+  color: var(--kw-text-primary);
+  font-weight: 600;
+}
+
+.kw-ts-text {
+  color: var(--kw-text-secondary);
+}
+
+.kw-ts-next-step {
+  background-color: rgba(0, 240, 255, 0.05);
+  border: 1px solid rgba(0, 240, 255, 0.15);
+  border-radius: var(--kw-radius-sm);
+  padding: 8px 10px;
+}
+
+.kw-ts-next-step .kw-ts-label {
+  color: var(--kw-accent-cyan);
+}
+
+.kw-ts-limitations {
+  color: var(--kw-text-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
+.kw-topic-action-row {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+
+
 
 
 

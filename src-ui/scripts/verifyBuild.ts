@@ -144,7 +144,40 @@ async function main(): Promise<void> {
   assert.ok(notifHtml.includes('Online'));
   notifStore.dismissAll();
 
-  console.log('verifyBuild: OK (All src-ui modules, multi-monitor displays, settings, themes, tokens, accessibility, keyboard shortcuts, notifications, and SSR/DOM contracts verified)');
+  // First-Run Experience, Guided Onboarding & Capability Readiness verification (Step 66)
+  assert.ok(settingsHtml.includes('Guided Onboarding &amp; System Readiness') || settingsHtml.includes('Guided Onboarding & System Readiness'));
+  assert.ok(settingsHtml.includes('data-testid="settings-reopen-onboarding-btn"'));
+  assert.ok(registry.getCommand('help.onboarding'));
+
+  shell.openOnboardingModal(0);
+  const onboardingHtml = renderToHtml(shell.render());
+  assert.ok(onboardingHtml.includes('data-testid="onboarding-modal-dialog"'));
+  assert.ok(onboardingHtml.includes('Welcome to KinetiWall'));
+  assert.ok(onboardingHtml.includes('Step 1 of 4: Welcome'));
+
+  shell.handleOnboardingStageChange(1);
+  const readinessHtml = renderToHtml(shell.render());
+  assert.ok(readinessHtml.includes('data-testid="onboarding-readiness-list"'));
+  assert.ok(readinessHtml.includes('Configuration &amp; Preferences') || readinessHtml.includes('Configuration & Preferences'));
+  assert.ok(readinessHtml.includes('data-testid="onboarding-recheck-readiness-btn"'));
+  shell.closeOnboardingModal();
+
+  // In-App Help, Contextual Guidance & Troubleshooting verification (Step 67)
+  assert.ok(registry.getCommand('help.main'));
+  assert.ok(settingsHtml.includes('data-testid="settings-help-btn"'));
+  assert.ok(displaysHtml.includes('data-testid="displays-help-btn"'));
+
+  shell.openHelpModal('ts-playback-paused');
+  const helpHtml = renderToHtml(shell.render());
+  assert.ok(helpHtml.includes('data-testid="help-modal-dialog"'));
+  assert.ok(helpHtml.includes('Help &amp; Troubleshooting') || helpHtml.includes('Help & Troubleshooting'));
+  assert.ok(helpHtml.includes('Wallpaper Paused or Not Animating'));
+  assert.ok(helpHtml.includes('What Happened:'));
+  assert.ok(helpHtml.includes('Likely Interpretation:'));
+  assert.ok(helpHtml.includes('data-testid="help-execute-action-btn"'));
+  shell.closeHelpModal();
+
+  console.log('verifyBuild: OK (All src-ui modules, multi-monitor displays, settings, themes, tokens, accessibility, keyboard shortcuts, notifications, onboarding, help & troubleshooting, and SSR/DOM contracts verified)');
 }
 
 await main();

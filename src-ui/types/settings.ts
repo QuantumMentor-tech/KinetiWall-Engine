@@ -10,6 +10,15 @@ export type ReducedMotionPreferenceDto = 'system' | 'always_reduce' | 'no_prefer
 
 export type NotificationPreferenceDto = 'all' | 'errors_only' | 'disabled';
 
+export type OnboardingStatusDto = 'not_started' | 'in_progress' | 'completed' | 'dismissed';
+
+export interface OnboardingRecordDto {
+  version: number;
+  status: OnboardingStatusDto;
+  last_completed_step: string | null;
+  completed_at_millis: number | null;
+}
+
 export type FullscreenActionDto = 'pause' | 'mute' | 'keep_playing';
 
 export type WindowStateActionDto = 'pause' | 'mute' | 'keep_playing';
@@ -29,6 +38,7 @@ export interface GeneralConfigDto {
   theme: ThemePreferenceDto;
   reduced_motion: ReducedMotionPreferenceDto;
   notifications: NotificationPreferenceDto;
+  onboarding: OnboardingRecordDto;
   language: string;
 }
 
@@ -94,6 +104,12 @@ export function createDefaultConfigDto(): KinetiWallConfigDto {
       theme: 'system',
       reduced_motion: 'system',
       notifications: 'all',
+      onboarding: {
+        version: 1,
+        status: 'not_started',
+        last_completed_step: null,
+        completed_at_millis: null,
+      },
       language: 'en-US',
     },
     performance: {
@@ -151,6 +167,16 @@ export function validateSettings(config: KinetiWallConfigDto): Record<string, st
   const validNotifications = ['all', 'errors_only', 'disabled'];
   if (config.general.notifications && !validNotifications.includes(config.general.notifications)) {
     errors['general.notifications'] = `Notification mode must be one of: ${validNotifications.join(', ')}`;
+  }
+
+  const validOnboardingStatus = ['not_started', 'in_progress', 'completed', 'dismissed'];
+  if (config.general.onboarding) {
+    if (!validOnboardingStatus.includes(config.general.onboarding.status)) {
+      errors['general.onboarding.status'] = `Onboarding status must be one of: ${validOnboardingStatus.join(', ')}`;
+    }
+    if (typeof config.general.onboarding.version !== 'number' || config.general.onboarding.version <= 0) {
+      errors['general.onboarding.version'] = 'Onboarding version must be a positive integer';
+    }
   }
 
   if (

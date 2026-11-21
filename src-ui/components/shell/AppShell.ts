@@ -19,8 +19,12 @@ import { SettingsStore } from '../../stores/settingsStore.ts';
 import { ThemeStore } from '../../stores/themeStore.ts';
 import { AccessibilityStore } from '../../stores/accessibilityStore.ts';
 import { NotificationStore } from '../../stores/notificationStore.ts';
+import { ReadinessEvaluator } from '../../services/readinessEvaluator.ts';
+import { HelpModal } from '../domain/HelpModal.ts';
+import type { HelpCategory, SafeActionId } from '../../types/help.ts';
 import { announce } from '../../utils/announcer.ts';
 import { KeyboardShortcutsModal } from '../domain/KeyboardShortcutsModal.ts';
+import { OnboardingModal, ONBOARDING_STAGES } from '../domain/OnboardingModal.ts';
 import { ToastContainer } from '../domain/ToastContainer.ts';
 import { DashboardView } from '../../views/DashboardView.ts';
 import { DisplaysView } from '../../views/DisplaysView.ts';
@@ -36,6 +40,7 @@ export interface AppShellProps {
   accessibilityStore?: AccessibilityStore;
   commandRegistry?: CommandRegistry;
   notificationStore?: NotificationStore;
+  readinessEvaluator?: ReadinessEvaluator;
 }
 
 export class AppShellController {
@@ -47,7 +52,17 @@ export class AppShellController {
   private readonly accessibilityStore: AccessibilityStore;
   private readonly commandRegistry: CommandRegistry;
   private readonly notificationStore: NotificationStore;
+  private readonly readinessEvaluator: ReadinessEvaluator;
   private isShortcutsModalOpen = false;
+  private isOnboardingModalOpen = false;
+  private isHelpModalOpen = false;
+  private selectedHelpTopicId = 'help-getting-started';
+  private helpSearchQuery = '';
+  private helpCategoryFilter: HelpCategory | 'all' = 'all';
+  private onboardingStageIndex = 0;
+  private isReadinessLoading = false;
+  private onboardingPersistenceError: string | null = null;
+  private hasEvaluatedInitialOnboarding = false;
   private viewError: string | null = null;
 
   constructor(props: AppShellProps) {
@@ -60,11 +75,19 @@ export class AppShellController {
     this.themeStore = props.themeStore ?? new ThemeStore();
     this.accessibilityStore = props.accessibilityStore ?? new AccessibilityStore();
     this.notificationStore = props.notificationStore ?? new NotificationStore();
+    this.readinessEvaluator =
+      props.readinessEvaluator ??
+      new ReadinessEvaluator({
+        settingsStore: this.settingsStore,
+        catalogStore: this.catalogStore,
+        displayStore: this.displayStore,
+      });
     this.commandRegistry =
       props.commandRegistry ??
       new CommandRegistry(() => ({
         activeRoute: this.routerStore.getState().activeRoute,
-        isModalOpen: this.isShortcutsModalOpen,
+        isModalOpen:
+          this.isShortcutsModalOpen || this.isOnboardingModalOpen || this.isHelpModalOpen,
       }));
 
     this.registerDefaultCommands();
@@ -80,6 +103,10 @@ export class AppShellController {
       this.themeStore.syncWithSettings(initialSettings);
       this.accessibilityStore.syncWithSettings(initialSettings);
       this.notificationStore.syncWithSettings(initialSettings);
+      if (initialSettings.general.onboarding?.status === 'not_started') {
+        this.hasEvaluatedInitialOnboarding = true;
+        this.isOnboardingModalOpen = true;
+      }
     }
 
     // Apply initial DOM attributes
@@ -92,6 +119,13 @@ export class AppShellController {
         this.themeStore.syncWithSettings(settingsState.persistedConfig);
         this.accessibilityStore.syncWithSettings(settingsState.persistedConfig);
         this.notificationStore.syncWithSettings(settingsState.persistedConfig);
+        if (
+          settingsState.persistedConfig.general.onboarding?.status === 'not_started' &&
+          !this.hasEvaluatedInitialOnboarding
+        ) {
+          this.hasEvaluatedInitialOnboarding = true;
+          this.isOnboardingModalOpen = true;
+        }
       }
       if (settingsState.draftConfig) {
         if (settingsState.draftConfig.general.theme) {
@@ -172,6 +206,106 @@ export class AppShellController {
     return this.notificationStore;
   }
 
+  getReadinessEvaluator(): ReadinessEvaluator {
+    return this.readinessEvaluator;
+  }
+
+  openOnboardingModal(stageIndex = 0): void {
+    this.onboardingStageIndex = Math.max(0, Math.min(stageIndex, ONBOARDING_STAGES.length - 1));
+    this.isOnboardingModalOpen = true;
+    this.onboardingPersistenceError = null;
+    void this.readinessEvaluator.checkReadiness(false);
+  }
+
+  closeOnboardingModal(): void {
+    this.isOnboardingModalOpen = false;
+  }
+
+  isOnboardingOpen(): boolean {
+    return this.isOnboardingModalOpen;
+  }
+
+  handleOnboardingStageChange(index: number): void {
+    const clamped = Math.max(0, Math.min(index, ONBOARDING_STAGES.length - 1));
+    this.onboardingStageIndex = clamped;
+    const stageId = ONBOARDING_STAGES[clamped]?.id ?? 'welcome';
+    const config = this.settingsStore.getState().draftConfig;
+    if (
+      config &&
+      config.general.onboarding.status !== 'completed' &&
+      config.general.onboarding.status !== 'dismissed'
+    ) {
+      this.settingsStore.updateDraftField('general', 'onboarding', {
+        ...config.general.onboarding,
+        status: 'in_progress',
+        last_completed_step: stageId,
+      });
+    }
+  }
+
+  async handleOnboardingRefreshReadiness(): Promise<void> {
+    this.isReadinessLoading = true;
+    try {
+      await this.readinessEvaluator.checkReadiness(true);
+      announce('System capability readiness check completed.');
+    } finally {
+      this.isReadinessLoading = false;
+    }
+  }
+
+  async handleOnboardingComplete(): Promise<boolean> {
+    this.onboardingPersistenceError = null;
+    const currentOnboarding = this.settingsStore.getState().draftConfig?.general.onboarding;
+    this.settingsStore.updateDraftField('general', 'onboarding', {
+      version: currentOnboarding?.version ?? 1,
+      status: 'completed',
+      last_completed_step: 'completion',
+      completed_at_millis: Date.now(),
+    });
+    const ok = await this.settingsStore.saveChanges();
+    if (ok) {
+      this.isOnboardingModalOpen = false;
+      this.notificationStore.success('Setup completed! Welcome to KinetiWall.', {
+        title: 'Setup Complete',
+        reasonCode: 'onboarding.completed',
+      });
+      announce('First-run setup completed. Welcome to KinetiWall.');
+      return true;
+    } else {
+      this.onboardingPersistenceError = 'Failed to persist setup completion to disk. Preferences will be retried.';
+      this.notificationStore.error('Could not save onboarding completion to disk.', {
+        title: 'Save Failed',
+        reasonCode: 'onboarding.save_failed',
+      });
+      return false;
+    }
+  }
+
+  async handleOnboardingDismiss(): Promise<boolean> {
+    this.onboardingPersistenceError = null;
+    const currentOnboarding = this.settingsStore.getState().draftConfig?.general.onboarding;
+    const stageId = ONBOARDING_STAGES[this.onboardingStageIndex]?.id ?? 'welcome';
+    this.settingsStore.updateDraftField('general', 'onboarding', {
+      version: currentOnboarding?.version ?? 1,
+      status: 'dismissed',
+      last_completed_step: stageId,
+      completed_at_millis: null,
+    });
+    const ok = await this.settingsStore.saveChanges();
+    this.isOnboardingModalOpen = false;
+    if (ok) {
+      this.notificationStore.info('Onboarding guide dismissed. Reopen anytime in Settings.', {
+        title: 'Guide Dismissed',
+        reasonCode: 'onboarding.dismissed',
+      });
+      announce('Onboarding guide dismissed. You can reopen it anytime in Settings.');
+      return true;
+    } else {
+      this.onboardingPersistenceError = 'Failed to persist dismissal to disk.';
+      return false;
+    }
+  }
+
   openShortcutsModal(): void {
     this.isShortcutsModalOpen = true;
   }
@@ -182,6 +316,60 @@ export class AppShellController {
 
   isShortcutsOpen(): boolean {
     return this.isShortcutsModalOpen;
+  }
+
+  openHelpModal(topicId?: string): void {
+    if (topicId) {
+      this.selectedHelpTopicId = topicId;
+    }
+    this.isHelpModalOpen = true;
+  }
+
+  closeHelpModal(): void {
+    this.isHelpModalOpen = false;
+  }
+
+  isHelpOpen(): boolean {
+    return this.isHelpModalOpen;
+  }
+
+  executeSafeAction(actionId: SafeActionId): void {
+    this.closeHelpModal();
+
+    switch (actionId) {
+      case 'nav.dashboard':
+        this.navigate('dashboard');
+        break;
+      case 'nav.library':
+        this.navigate('library');
+        break;
+      case 'nav.displays':
+        this.navigate('displays');
+        break;
+      case 'nav.settings':
+        this.navigate('settings');
+        break;
+      case 'library.refresh':
+        void this.catalogStore.loadCatalog();
+        announce('Refreshing wallpaper catalog');
+        break;
+      case 'displays.refresh':
+        void this.displayStore.refreshTopology();
+        announce('Refreshing display topology');
+        break;
+      case 'onboarding.reopen':
+        this.openOnboardingModal(0);
+        break;
+      case 'readiness.recheck':
+        this.navigate('settings');
+        this.openOnboardingModal(1);
+        break;
+      case 'help.shortcuts':
+        this.openShortcutsModal();
+        break;
+      default:
+        break;
+    }
   }
 
   dispose(): void {
@@ -341,13 +529,24 @@ export class AppShellController {
     });
 
     this.commandRegistry.registerCommand({
-      id: 'help.shortcuts_f1',
-      label: 'Show Keyboard Shortcuts (F1)',
-      description: 'Open the keyboard shortcuts reference dialog',
+      id: 'help.main',
+      label: 'Open Help & Troubleshooting',
+      description: 'Open the in-app help catalogue and troubleshooting guide',
       category: 'general',
       defaultShortcut: { key: 'F1' },
       action: () => {
-        this.openShortcutsModal();
+        this.openHelpModal();
+      },
+    });
+
+    this.commandRegistry.registerCommand({
+      id: 'help.onboarding',
+      label: 'Show Guided Onboarding',
+      description: 'Open the first-run guided tour and system readiness inspector',
+      category: 'general',
+      defaultShortcut: { key: 'h', code: 'KeyH', ctrl: true, shift: true },
+      action: () => {
+        this.openOnboardingModal(0);
       },
     });
 
@@ -360,8 +559,12 @@ export class AppShellController {
       defaultShortcut: { key: 'Escape' },
       allowInInputs: true,
       action: () => {
-        if (this.isShortcutsModalOpen) {
+        if (this.isHelpModalOpen) {
+          this.closeHelpModal();
+        } else if (this.isShortcutsModalOpen) {
           this.closeShortcutsModal();
+        } else if (this.isOnboardingModalOpen) {
+          void this.handleOnboardingDismiss();
         }
       },
     });
@@ -386,10 +589,13 @@ export class AppShellController {
         mainViewNode = DisplaysView({
           displayStore: this.displayStore,
           catalogStore: this.catalogStore,
+          onOpenHelp: (topicId) => this.openHelpModal(topicId),
         });
       } else if (routerState.activeRoute === 'settings') {
         mainViewNode = SettingsView({
           settingsStore: this.settingsStore,
+          onReopenOnboarding: () => this.openOnboardingModal(0),
+          onOpenHelp: (topicId) => this.openHelpModal(topicId),
         });
       } else {
         mainViewNode = DashboardView({
@@ -504,6 +710,25 @@ export class AppShellController {
             );
           }),
         ),
+        // Help & Troubleshooting Button in Nav Footer
+        h(
+          'button',
+          {
+            attrs: {
+              type: 'button',
+              'data-testid': 'nav-help-btn',
+              class: 'kw-shortcuts-footer-btn kw-focus-ring',
+              'aria-label': 'Help & Troubleshooting (press F1)',
+              title: 'Help & Troubleshooting (press F1)',
+            },
+            onClick: () => {
+              this.openHelpModal();
+            },
+          },
+          h('span', { attrs: { 'aria-hidden': 'true' } }, '❓'),
+          h('span', {}, 'Help'),
+          h('span', { attrs: { class: 'kw-nav-shortcut-hint', 'aria-hidden': 'true' } }, 'F1'),
+        ),
         // Shortcuts Reference Button in Nav Footer
         h(
           'button',
@@ -512,8 +737,8 @@ export class AppShellController {
               type: 'button',
               'data-testid': 'nav-shortcuts-btn',
               class: 'kw-shortcuts-footer-btn kw-focus-ring',
-              'aria-label': 'Keyboard Shortcuts (press ? or F1)',
-              title: 'Keyboard Shortcuts (press ? or F1)',
+              'aria-label': 'Keyboard Shortcuts (press ?)',
+              title: 'Keyboard Shortcuts (press ?)',
             },
             onClick: () => {
               this.openShortcutsModal();
@@ -536,12 +761,46 @@ export class AppShellController {
         },
         mainViewNode,
       ),
+      // Help & Troubleshooting Dialog Modal (Step 67)
+      HelpModal({
+        isOpen: this.isHelpModalOpen,
+        selectedTopicId: this.selectedHelpTopicId,
+        searchQuery: this.helpSearchQuery,
+        categoryFilter: this.helpCategoryFilter,
+        onClose: () => this.closeHelpModal(),
+        onSelectTopic: (topicId) => {
+          this.selectedHelpTopicId = topicId;
+        },
+        onSearchChange: (q) => {
+          this.helpSearchQuery = q;
+        },
+        onCategoryChange: (cat) => {
+          this.helpCategoryFilter = cat;
+        },
+        onExecuteAction: (actionId) => this.executeSafeAction(actionId),
+      }),
       // Keyboard Shortcuts Dialog Modal
       KeyboardShortcutsModal({
         isOpen: this.isShortcutsModalOpen,
         registry: this.commandRegistry,
         onClose: () => {
           this.closeShortcutsModal();
+        },
+      }),
+      // Guided Onboarding Dialog Modal (Step 66)
+      OnboardingModal({
+        isOpen: this.isOnboardingModalOpen,
+        currentStageIndex: this.onboardingStageIndex,
+        report: this.readinessEvaluator.getLatestReport(),
+        isReadinessLoading: this.isReadinessLoading,
+        persistenceError: this.onboardingPersistenceError,
+        onStageChange: (idx) => this.handleOnboardingStageChange(idx),
+        onRefreshReadiness: () => void this.handleOnboardingRefreshReadiness(),
+        onComplete: () => void this.handleOnboardingComplete(),
+        onDismiss: () => void this.handleOnboardingDismiss(),
+        onOpenLibrary: () => {
+          void this.handleOnboardingComplete();
+          this.navigate('library');
         },
       }),
       // In-App Notifications Toast Container

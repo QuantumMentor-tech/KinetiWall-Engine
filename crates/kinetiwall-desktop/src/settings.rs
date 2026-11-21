@@ -68,6 +68,48 @@ pub enum ReducedMotionPreference {
     NoPreference,
 }
 
+/// Current version of the first-run guided onboarding contract (Step 66).
+pub const CURRENT_ONBOARDING_VERSION: u32 = 1;
+
+/// Guided onboarding lifecycle status (Step 66).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OnboardingStatus {
+    #[default]
+    NotStarted,
+    InProgress,
+    Completed,
+    Dismissed,
+}
+
+/// Structured record tracking user onboarding progress and completion (Step 66).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OnboardingRecord {
+    #[serde(default = "default_onboarding_version")]
+    pub version: u32,
+    #[serde(default)]
+    pub status: OnboardingStatus,
+    #[serde(default)]
+    pub last_completed_step: Option<String>,
+    #[serde(default)]
+    pub completed_at_millis: Option<u64>,
+}
+
+fn default_onboarding_version() -> u32 {
+    CURRENT_ONBOARDING_VERSION
+}
+
+impl Default for OnboardingRecord {
+    fn default() -> Self {
+        Self {
+            version: CURRENT_ONBOARDING_VERSION,
+            status: OnboardingStatus::NotStarted,
+            last_completed_step: None,
+            completed_at_millis: None,
+        }
+    }
+}
+
 /// In-app notification display preference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -139,6 +181,8 @@ pub struct GeneralConfig {
     pub reduced_motion: ReducedMotionPreference,
     #[serde(default)]
     pub notifications: NotificationPreference,
+    #[serde(default)]
+    pub onboarding: OnboardingRecord,
     pub language: String,
 }
 
@@ -151,6 +195,7 @@ impl Default for GeneralConfig {
             theme: ThemePreference::System,
             reduced_motion: ReducedMotionPreference::System,
             notifications: NotificationPreference::All,
+            onboarding: OnboardingRecord::default(),
             language: "en-US".to_string(),
         }
     }
@@ -324,6 +369,16 @@ impl KinetiWallConfig {
             return Err(SettingsError::ValidationFailure {
                 setting: "general.language".into(),
                 detail: "Language identifier cannot be empty".into(),
+            });
+        }
+
+        if self.general.onboarding.version == 0 || self.general.onboarding.version > CURRENT_ONBOARDING_VERSION {
+            return Err(SettingsError::ValidationFailure {
+                setting: "general.onboarding.version".into(),
+                detail: format!(
+                    "Onboarding version ({}) outside supported bounds [1, {}]",
+                    self.general.onboarding.version, CURRENT_ONBOARDING_VERSION
+                ),
             });
         }
 

@@ -17,6 +17,7 @@ import type { DisplayId } from '../types/display.ts';
 export interface DisplaysViewProps {
   displayStore: DisplayStore;
   catalogStore: CatalogStore;
+  onOpenHelp?: (topicId?: string) => void;
 }
 
 export function DisplaysView(props: DisplaysViewProps): UiNode {
@@ -81,6 +82,15 @@ export function DisplaysView(props: DisplaysViewProps): UiNode {
               tone: 'available',
             })
           : null,
+        Button({
+          testId: 'displays-help-btn',
+          label: 'Layout Help',
+          variant: 'ghost',
+          size: 'sm',
+          onClick: () => {
+            props.onOpenHelp?.('help-displays-layout');
+          },
+        }),
         Button({
           testId: 'displays-refresh-btn',
           label: 'Refresh',
